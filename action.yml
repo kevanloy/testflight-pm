@@ -84,9 +84,9 @@ inputs:
     required: false
     default: "claude-sonnet-4-5"  # Ignored - uses DEFAULT_LLM_MODELS.anthropic
   google_model:
-    description: "[DEPRECATED] Google model - fixed to latest (gemini-3.0-flash)"
+    description: "[DEPRECATED] Google model - fixed to latest (gemini-3-flash-preview)"
     required: false
-    default: "gemini-3.0-flash"  # Ignored - uses DEFAULT_LLM_MODELS.google
+    default: "gemini-3-flash-preview"  # Ignored - uses DEFAULT_LLM_MODELS.google
 
   # LLM Cost Controls
   max_llm_cost_per_run:

@@ -82,8 +82,8 @@ export const LLM_MODEL_PRICING: Record<
 	// Latest Anthropic model - claude-sonnet-4-5
 	[DEFAULT_LLM_MODELS.anthropic]: { input: 0.003, output: 0.015 },
 
-	// Latest Google model - gemini-3.0-flash
-	[DEFAULT_LLM_MODELS.google]: { input: 0.000075, output: 0.0003 },
+	// Latest Google model - gemini-3-flash-preview ($0.50/$3.00 per million tokens)
+	[DEFAULT_LLM_MODELS.google]: { input: 0.0005, output: 0.003 },
 } as const;
 
 /**
