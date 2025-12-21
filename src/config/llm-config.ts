@@ -79,7 +79,7 @@ export const LLM_MODEL_PRICING: Record<
 	// Latest OpenAI model - gpt-5.2
 	[DEFAULT_LLM_MODELS.openai]: { input: 0.00015, output: 0.0006 },
 
-	// Latest Anthropic model - claude-sonnet-4.5
+	// Latest Anthropic model - claude-sonnet-4-5
 	[DEFAULT_LLM_MODELS.anthropic]: { input: 0.003, output: 0.015 },
 
 	// Latest Google model - gemini-3.0-flash

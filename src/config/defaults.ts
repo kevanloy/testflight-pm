@@ -111,7 +111,7 @@ export const VALIDATION_PATTERNS = {
  */
 export const DEFAULT_LLM_MODELS = {
     openai: "gpt-5.2",
-    anthropic: "claude-sonnet-4.5",
+    anthropic: "claude-sonnet-4-5",
     google: "gemini-3.0-flash",
 } as const;
 
