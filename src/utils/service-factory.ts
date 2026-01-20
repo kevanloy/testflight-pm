@@ -28,6 +28,11 @@ interface LinearClientInterface {
 		additionalLabels?: string[],
 		assigneeId?: string,
 		projectId?: string,
+		options?: {
+			customTitle?: string;
+			customDescription?: string;
+			priority?: number;
+		},
 	): Promise<LinearIssue>;
 	findDuplicateIssue(
 		feedback: ProcessedFeedbackData,

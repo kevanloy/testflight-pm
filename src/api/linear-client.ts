@@ -731,8 +731,18 @@ export class LinearClient {
 		}
 
 		// Generate description - use enhanced description if provided, otherwise generate standard description
-		const description = options?.customDescription ||
+		let description = options?.customDescription ||
 			this.generateStandardDescription(feedback, typeIcon, typeLabel, screenshotUrls);
+
+		// Always append screenshots to description if we have URLs (even with custom descriptions)
+		// Custom descriptions from LLM don't include screenshots, so we need to add them
+		if (options?.customDescription && screenshotUrls.length > 0) {
+			description += "\n\n### 📸 Screenshots\n\n";
+			for (const screenshot of screenshotUrls) {
+				description += `**${screenshot.filename}:**\n`;
+				description += `![${screenshot.filename}](${screenshot.url})\n\n`;
+			}
+		}
 
 		// Determine labels
 		const baseLabels = isCrash
@@ -1058,6 +1068,11 @@ export class LinearClient {
 
 		for (let i = 0; i < feedback.screenshotData.images.length; i++) {
 			const imageInfo = feedback.screenshotData.images[i];
+			// Skip if imageInfo is undefined
+			if (!imageInfo) {
+				console.warn(`⚠️ Screenshot ${i} is undefined, skipping`);
+				continue;
+			}
 			// Generate fallback filename if missing
 			const fileName = imageInfo.fileName || `screenshot_${i}.png`;
 

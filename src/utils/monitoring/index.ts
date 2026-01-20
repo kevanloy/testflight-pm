@@ -13,6 +13,9 @@ export type {
     HealthCheckerFactory,
 } from "./health-check-base.js";
 
+// Import for local use in interface extension
+import type { HealthCheckResult } from "./health-check-base.js";
+
 export type {
     SystemHealth,
     MonitoringConfig,
