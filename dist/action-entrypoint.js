@@ -47945,7 +47945,7 @@ ${llmAnalysis.analysis.suggestedFix}`;
     result.fallbackReason = reason;
     try {
       const standardResult = await this.idempotencyService.createIssueWithDuplicateProtection(feedback, {
-        preferredPlatform: options.platform === "both" ? "github" : options.platform,
+        preferredPlatform: options.platform,
         skipDuplicateDetection: options.skipDuplicateDetection,
         actionRunId: options.actionRunId
       });
@@ -48866,15 +48866,23 @@ class TestFlightClient {
           }
         });
         if (processedScreenshot.screenshotData) {
-          if (detailedScreenshot.attributes.screenshots && detailedScreenshot.attributes.screenshots.length > 0) {
-            processedScreenshot.screenshotData.images = detailedScreenshot.attributes.screenshots.map((img, index) => ({
-              url: img.url,
-              fileName: img.fileName || `screenshot_${index}.png`,
-              fileSize: img.fileSize || 0,
-              expiresAt: new Date(img.expiresAt || Date.now() + 3600000)
-            }));
-            processedScreenshot.screenshotData.enhancedImages = await this.processEnhancedScreenshotImages(detailedScreenshot.attributes.screenshots);
+          const screenshotsFromAPI = detailedScreenshot.attributes.screenshots;
+          console.log(`\uD83D\uDD0D DEBUG: screenshots from API for ${screenshot.id}:`, JSON.stringify(screenshotsFromAPI, null, 2));
+          if (screenshotsFromAPI && screenshotsFromAPI.length > 0) {
+            processedScreenshot.screenshotData.images = screenshotsFromAPI.map((img, index) => {
+              const processedImg = {
+                url: img?.url || "",
+                fileName: img?.fileName || `screenshot_${index}.png`,
+                fileSize: img?.fileSize || 0,
+                expiresAt: new Date(img?.expiresAt || Date.now() + 3600000)
+              };
+              console.log(`\uD83D\uDD0D DEBUG: Processed image ${index}:`, JSON.stringify(processedImg, null, 2));
+              return processedImg;
+            });
+            processedScreenshot.screenshotData.enhancedImages = await this.processEnhancedScreenshotImages(screenshotsFromAPI);
             console.log(`\uD83D\uDCF7 Found ${processedScreenshot.screenshotData.images.length} screenshot(s) from detailed API for ${screenshot.id}`);
+          } else {
+            console.warn(`⚠️ No screenshots in detailed API response for ${screenshot.id}`);
           }
         }
         console.log(`✅ Enhanced screenshot metadata obtained for ${screenshot.id}`);

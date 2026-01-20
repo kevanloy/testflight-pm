@@ -613,8 +613,7 @@ export class LLMEnhancedIssueCreator {
 				await this.idempotencyService.createIssueWithDuplicateProtection(
 					feedback,
 					{
-						preferredPlatform:
-							options.platform === "both" ? "github" : options.platform,
+						preferredPlatform: options.platform, // Preserve "both" to create on all platforms
 						skipDuplicateDetection: options.skipDuplicateDetection,
 						actionRunId: options.actionRunId,
 					},

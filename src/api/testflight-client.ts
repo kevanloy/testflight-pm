@@ -1021,21 +1021,30 @@ export class TestFlightClient {
 
 				if (processedScreenshot.screenshotData) {
 					// Process enhanced screenshot images if available from detailed API
-					if (detailedScreenshot.attributes.screenshots && detailedScreenshot.attributes.screenshots.length > 0) {
+					const screenshotsFromAPI = detailedScreenshot.attributes.screenshots;
+					console.log(`🔍 DEBUG: screenshots from API for ${screenshot.id}:`, JSON.stringify(screenshotsFromAPI, null, 2));
+
+					if (screenshotsFromAPI && screenshotsFromAPI.length > 0) {
 						// IMPORTANT: The initial list API doesn't return screenshots - only the detailed API does
 						// So we need to populate the main images array from the detailed response
-						processedScreenshot.screenshotData.images = detailedScreenshot.attributes.screenshots.map((img, index) => ({
-							url: img.url,
-							fileName: img.fileName || `screenshot_${index}.png`,
-							fileSize: img.fileSize || 0,
-							expiresAt: new Date(img.expiresAt || Date.now() + 3600000),
-						}));
+						processedScreenshot.screenshotData.images = screenshotsFromAPI.map((img, index) => {
+							const processedImg = {
+								url: img?.url || '',
+								fileName: img?.fileName || `screenshot_${index}.png`,
+								fileSize: img?.fileSize || 0,
+								expiresAt: new Date(img?.expiresAt || Date.now() + 3600000),
+							};
+							console.log(`🔍 DEBUG: Processed image ${index}:`, JSON.stringify(processedImg, null, 2));
+							return processedImg;
+						});
 
 						// Also store enhanced metadata
 						processedScreenshot.screenshotData.enhancedImages =
-							await this.processEnhancedScreenshotImages(detailedScreenshot.attributes.screenshots);
+							await this.processEnhancedScreenshotImages(screenshotsFromAPI);
 
 						console.log(`📷 Found ${processedScreenshot.screenshotData.images.length} screenshot(s) from detailed API for ${screenshot.id}`);
+					} else {
+						console.warn(`⚠️ No screenshots in detailed API response for ${screenshot.id}`);
 					}
 				}
 
