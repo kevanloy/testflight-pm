@@ -46370,7 +46370,21 @@ class LinearClient {
         title += ` - ${shortText}${shortText.length < feedback.screenshotData.text.length ? "..." : ""}`;
       }
     }
-    const description = options?.customDescription || this.generateStandardDescription(feedback, typeIcon, typeLabel, screenshotUrls);
+    let description = options?.customDescription || this.generateStandardDescription(feedback, typeIcon, typeLabel, screenshotUrls);
+    if (options?.customDescription && screenshotUrls.length > 0) {
+      description += `
+
+### \uD83D\uDCF8 Screenshots
+
+`;
+      for (const screenshot of screenshotUrls) {
+        description += `**${screenshot.filename}:**
+`;
+        description += `![${screenshot.filename}](${screenshot.url})
+
+`;
+      }
+    }
     const baseLabels = isCrash ? this.config.crashLabels : this.config.feedbackLabels;
     const allLabels = [
       ...this.config.defaultLabels,
@@ -46681,6 +46695,10 @@ ${feedback.crashData.trace}
     }
     for (let i = 0;i < feedback.screenshotData.images.length; i++) {
       const imageInfo = feedback.screenshotData.images[i];
+      if (!imageInfo) {
+        console.warn(`⚠️ Screenshot ${i} is undefined, skipping`);
+        continue;
+      }
       const fileName = imageInfo.fileName || `screenshot_${i}.png`;
       try {
         let imageData;
