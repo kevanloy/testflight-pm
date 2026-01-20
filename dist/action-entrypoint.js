@@ -48874,12 +48874,15 @@ class TestFlightClient {
     }
   }
   async processEnhancedScreenshotImages(screenshots) {
+    if (!screenshots || !Array.isArray(screenshots)) {
+      return [];
+    }
     return screenshots.map((screenshot, index) => ({
-      url: screenshot.url,
-      fileName: screenshot.fileName,
-      fileSize: screenshot.fileSize,
-      expiresAt: new Date(screenshot.expiresAt),
-      imageFormat: this.extractImageFormat(screenshot.fileName),
+      url: screenshot?.url || "",
+      fileName: screenshot?.fileName || `screenshot_${index}.png`,
+      fileSize: screenshot?.fileSize || 0,
+      expiresAt: screenshot?.expiresAt ? new Date(screenshot.expiresAt) : new Date,
+      imageFormat: this.extractImageFormat(screenshot?.fileName),
       imageScale: 1,
       imageDimensions: {
         width: 0,
@@ -48893,6 +48896,9 @@ class TestFlightClient {
     }));
   }
   extractImageFormat(fileName) {
+    if (!fileName) {
+      return "png";
+    }
     const extension = fileName.toLowerCase().split(".").pop();
     switch (extension) {
       case "png":

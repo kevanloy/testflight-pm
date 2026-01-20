@@ -1043,13 +1043,16 @@ export class TestFlightClient {
 	private async processEnhancedScreenshotImages(
 		screenshots: TestFlightScreenshotFeedback["attributes"]["screenshots"],
 	): Promise<EnhancedScreenshotImage[]> {
+		if (!screenshots || !Array.isArray(screenshots)) {
+			return [];
+		}
 		return screenshots.map((screenshot, index) => ({
-			url: screenshot.url,
-			fileName: screenshot.fileName,
-			fileSize: screenshot.fileSize,
-			expiresAt: new Date(screenshot.expiresAt),
+			url: screenshot?.url || "",
+			fileName: screenshot?.fileName || `screenshot_${index}.png`,
+			fileSize: screenshot?.fileSize || 0,
+			expiresAt: screenshot?.expiresAt ? new Date(screenshot.expiresAt) : new Date(),
 			// Additional enhanced properties (would be available from Apple's detailed API)
-			imageFormat: this.extractImageFormat(screenshot.fileName),
+			imageFormat: this.extractImageFormat(screenshot?.fileName),
 			imageScale: 1.0, // Default scale, could be enhanced with actual data
 			imageDimensions: {
 				width: 0, // Would be provided by detailed API
@@ -1066,7 +1069,10 @@ export class TestFlightClient {
 	/**
 	 * Extracts image format from filename
 	 */
-	private extractImageFormat(fileName: string): "png" | "jpeg" | "heic" {
+	private extractImageFormat(fileName?: string): "png" | "jpeg" | "heic" {
+		if (!fileName) {
+			return 'png'; // Default fallback when fileName is undefined
+		}
 		const extension = fileName.toLowerCase().split('.').pop();
 		switch (extension) {
 			case 'png':
