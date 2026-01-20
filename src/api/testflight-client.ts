@@ -1021,9 +1021,11 @@ export class TestFlightClient {
 					fields: {
 						betaFeedbackCrashSubmissions: [
 							"createdDate", "comment", "email", "deviceModel", "osVersion",
-							"batteryPercentage", "appUptimeInMilliseconds", "connectionType",
-							"diskBytesAvailable", "diskBytesTotal", "architecture",
-							"pairedAppleWatch", "screenWidthInPoints", "screenHeightInPoints"
+							"locale", "timeZone", "architecture", "connectionType",
+							"pairedAppleWatch", "appUptimeInMilliseconds", "diskBytesAvailable",
+							"diskBytesTotal", "batteryPercentage", "screenWidthInPoints",
+							"screenHeightInPoints", "appPlatform", "devicePlatform",
+							"deviceFamily", "buildBundleId"
 						].join(",")
 					}
 				});
@@ -1073,11 +1075,11 @@ export class TestFlightClient {
 					fields: {
 						betaFeedbackScreenshotSubmissions: [
 							"createdDate", "comment", "email", "deviceModel", "osVersion",
-							"batteryPercentage", "appUptimeInMilliseconds", "connectionType",
-							"diskBytesAvailable", "diskBytesTotal", "architecture",
-							"pairedAppleWatch", "screenWidthInPoints", "screenHeightInPoints",
-							"locale", "timeZone", "deviceFamily", "buildBundleId",
-							"screenshots"
+							"locale", "timeZone", "architecture", "connectionType",
+							"pairedAppleWatch", "appUptimeInMilliseconds", "diskBytesAvailable",
+							"diskBytesTotal", "batteryPercentage", "screenWidthInPoints",
+							"screenHeightInPoints", "appPlatform", "devicePlatform",
+							"deviceFamily", "buildBundleId", "screenshots"
 						].join(",")
 					}
 				});
