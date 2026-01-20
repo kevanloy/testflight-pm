@@ -84,11 +84,17 @@ export class LinearClient {
 
 			// Upload screenshots to Linear before creating the issue
 			let screenshotUrls: Array<{ filename: string; url: string }> = [];
+			console.log(`🔍 DEBUG Linear: screenshotData exists: ${!!feedback.screenshotData}`);
+			console.log(`🔍 DEBUG Linear: images array: ${feedback.screenshotData?.images?.length || 0} items`);
+
 			if (feedback.screenshotData?.images && feedback.screenshotData.images.length > 0) {
 				console.log(`📸 Uploading ${feedback.screenshotData.images.length} screenshot(s) to Linear...`);
 				const uploadResult = await this.uploadScreenshots(feedback);
 				screenshotUrls = uploadResult.urls;
 				console.log(`✅ Uploaded ${uploadResult.uploaded} screenshot(s), ${uploadResult.failed} failed`);
+				console.log(`🔍 DEBUG Linear: Screenshot URLs: ${JSON.stringify(screenshotUrls)}`);
+			} else {
+				console.warn(`⚠️ No screenshot images available for Linear upload`);
 			}
 
 			const issueData = this.prepareIssueFromTestFlight(

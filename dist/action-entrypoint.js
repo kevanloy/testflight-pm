@@ -28530,38 +28530,54 @@ ${feedback.crashData.trace}
     return Math.abs(hash).toString(36);
   }
   async downloadScreenshotsForFeedback(feedback) {
-    if (!feedback.screenshotData?.images) {
+    console.log(`\uD83D\uDD0D DEBUG GitHub: screenshotData exists: ${!!feedback.screenshotData}`);
+    console.log(`\uD83D\uDD0D DEBUG GitHub: images array: ${JSON.stringify(feedback.screenshotData?.images?.length)} items`);
+    if (!feedback.screenshotData?.images || feedback.screenshotData.images.length === 0) {
+      console.warn(`⚠️ No screenshot images available for GitHub upload`);
       return [];
     }
     const attachments = [];
     for (let i = 0;i < feedback.screenshotData.images.length; i++) {
       const imageInfo = feedback.screenshotData.images[i];
-      const fileName = imageInfo.fileName || `screenshot_${i}.png`;
+      if (!imageInfo) {
+        console.warn(`⚠️ Screenshot ${i} is null/undefined, skipping`);
+        continue;
+      }
+      const fileName = typeof imageInfo.fileName === "string" && imageInfo.fileName.length > 0 ? imageInfo.fileName : `screenshot_${i}.png`;
+      console.log(`\uD83D\uDD0D DEBUG GitHub: Processing screenshot ${i}: fileName=${fileName}, hasCachedData=${!!imageInfo.cachedData}, url=${imageInfo.url?.substring(0, 50)}...`);
       try {
-        let imageData;
-        if (imageInfo.cachedData) {
-          console.log(`\uD83D\uDCF8 Using cached screenshot: ${fileName}`);
+        let imageData = null;
+        if (imageInfo.cachedData && imageInfo.cachedData.length > 0) {
+          console.log(`\uD83D\uDCF8 Using cached screenshot: ${fileName} (${imageInfo.cachedData.length} bytes)`);
           imageData = imageInfo.cachedData;
-        } else {
+        } else if (imageInfo.url) {
+          console.log(`\uD83D\uDCF8 Downloading screenshot (not cached): ${fileName}`);
           imageData = await this.downloadSingleScreenshotImageData({
             url: imageInfo.url,
             fileName,
-            fileSize: imageInfo.fileSize,
-            expiresAt: imageInfo.expiresAt
+            fileSize: imageInfo.fileSize || 0,
+            expiresAt: imageInfo.expiresAt || new Date(Date.now() + 3600000)
           });
+        } else {
+          console.warn(`⚠️ Screenshot ${i} has no cached data and no URL, skipping`);
+          continue;
         }
-        if (imageData) {
+        if (imageData && imageData.length > 0) {
           attachments.push({
             filename: fileName,
             content: imageData,
             contentType: this.getContentTypeFromFileName(fileName),
             size: imageData.length
           });
+          console.log(`✅ Prepared screenshot for upload: ${fileName}`);
+        } else {
+          console.warn(`⚠️ Failed to get image data for ${fileName}`);
         }
       } catch (error) {
-        console.warn(`Failed to get screenshot ${fileName}:`, error);
+        console.warn(`❌ Failed to process screenshot ${fileName}:`, error);
       }
     }
+    console.log(`\uD83D\uDCCA GitHub: Prepared ${attachments.length} screenshots for upload`);
     return attachments;
   }
   async downloadSingleScreenshotImageData(imageInfo) {
@@ -45885,11 +45901,16 @@ class LinearClient {
         }
       }
       let screenshotUrls = [];
+      console.log(`\uD83D\uDD0D DEBUG Linear: screenshotData exists: ${!!feedback.screenshotData}`);
+      console.log(`\uD83D\uDD0D DEBUG Linear: images array: ${feedback.screenshotData?.images?.length || 0} items`);
       if (feedback.screenshotData?.images && feedback.screenshotData.images.length > 0) {
         console.log(`\uD83D\uDCF8 Uploading ${feedback.screenshotData.images.length} screenshot(s) to Linear...`);
         const uploadResult = await this.uploadScreenshots(feedback);
         screenshotUrls = uploadResult.urls;
         console.log(`✅ Uploaded ${uploadResult.uploaded} screenshot(s), ${uploadResult.failed} failed`);
+        console.log(`\uD83D\uDD0D DEBUG Linear: Screenshot URLs: ${JSON.stringify(screenshotUrls)}`);
+      } else {
+        console.warn(`⚠️ No screenshot images available for Linear upload`);
       }
       const issueData = this.prepareIssueFromTestFlight(feedback, additionalLabels, assigneeId, projectId, options, screenshotUrls);
       const issueCreatePayload = await this.sdk.createIssue({

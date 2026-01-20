@@ -1199,7 +1199,11 @@ export class GitHubClient {
 	private async downloadScreenshotsForFeedback(
 		feedback: ProcessedFeedbackData,
 	): Promise<GitHubScreenshotUpload[]> {
-		if (!feedback.screenshotData?.images) {
+		console.log(`🔍 DEBUG GitHub: screenshotData exists: ${!!feedback.screenshotData}`);
+		console.log(`🔍 DEBUG GitHub: images array: ${JSON.stringify(feedback.screenshotData?.images?.length)} items`);
+
+		if (!feedback.screenshotData?.images || feedback.screenshotData.images.length === 0) {
+			console.warn(`⚠️ No screenshot images available for GitHub upload`);
 			return [];
 		}
 
@@ -1208,39 +1212,58 @@ export class GitHubClient {
 		// Process screenshots - prefer cached data over downloading
 		for (let i = 0; i < feedback.screenshotData.images.length; i++) {
 			const imageInfo = feedback.screenshotData.images[i];
-			// Generate fallback filename if missing
-			const fileName = imageInfo.fileName || `screenshot_${i}.png`;
+
+			// Skip if imageInfo is null/undefined
+			if (!imageInfo) {
+				console.warn(`⚠️ Screenshot ${i} is null/undefined, skipping`);
+				continue;
+			}
+
+			// Generate fallback filename if missing - be extra defensive
+			const fileName = (typeof imageInfo.fileName === 'string' && imageInfo.fileName.length > 0)
+				? imageInfo.fileName
+				: `screenshot_${i}.png`;
+
+			console.log(`🔍 DEBUG GitHub: Processing screenshot ${i}: fileName=${fileName}, hasCachedData=${!!imageInfo.cachedData}, url=${imageInfo.url?.substring(0, 50)}...`);
 
 			try {
-				let imageData: Uint8Array | null;
+				let imageData: Uint8Array | null = null;
 
 				// Use cached data if available (pre-downloaded to avoid URL expiration)
-				if (imageInfo.cachedData) {
-					console.log(`📸 Using cached screenshot: ${fileName}`);
+				if (imageInfo.cachedData && imageInfo.cachedData.length > 0) {
+					console.log(`📸 Using cached screenshot: ${fileName} (${imageInfo.cachedData.length} bytes)`);
 					imageData = imageInfo.cachedData;
-				} else {
+				} else if (imageInfo.url) {
 					// Fall back to downloading if not cached
+					console.log(`📸 Downloading screenshot (not cached): ${fileName}`);
 					imageData = await this.downloadSingleScreenshotImageData({
 						url: imageInfo.url,
 						fileName: fileName,
-						fileSize: imageInfo.fileSize,
-						expiresAt: imageInfo.expiresAt,
+						fileSize: imageInfo.fileSize || 0,
+						expiresAt: imageInfo.expiresAt || new Date(Date.now() + 3600000),
 					});
+				} else {
+					console.warn(`⚠️ Screenshot ${i} has no cached data and no URL, skipping`);
+					continue;
 				}
 
-				if (imageData) {
+				if (imageData && imageData.length > 0) {
 					attachments.push({
 						filename: fileName,
 						content: imageData,
 						contentType: this.getContentTypeFromFileName(fileName),
 						size: imageData.length,
 					});
+					console.log(`✅ Prepared screenshot for upload: ${fileName}`);
+				} else {
+					console.warn(`⚠️ Failed to get image data for ${fileName}`);
 				}
 			} catch (error) {
-				console.warn(`Failed to get screenshot ${fileName}:`, error);
+				console.warn(`❌ Failed to process screenshot ${fileName}:`, error);
 			}
 		}
 
+		console.log(`📊 GitHub: Prepared ${attachments.length} screenshots for upload`);
 		return attachments;
 	}
 
