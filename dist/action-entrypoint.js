@@ -27783,11 +27783,21 @@ class GitHubClient {
       }
       const issueData = await this.prepareIssueFromTestFlight(feedback, options);
       let attachmentResults;
+      console.log(`\uD83D\uDD0D DEBUG GitHub upload check: attachScreenshots=${options.attachScreenshots}, enableScreenshotUpload=${this.config.enableScreenshotUpload}, attachments.length=${issueData.attachments.length}`);
       if (options.attachScreenshots !== false && this.config.enableScreenshotUpload && issueData.attachments.length > 0) {
-        attachmentResults = await this.uploadScreenshots(issueData.attachments, feedback);
-        if (attachmentResults.uploaded > 0) {
-          issueData.body += this.formatScreenshotLinks(attachmentResults);
+        console.log(`\uD83D\uDCE4 Starting GitHub screenshot upload for ${issueData.attachments.length} attachments...`);
+        try {
+          attachmentResults = await this.uploadScreenshots(issueData.attachments, feedback);
+          console.log(`\uD83D\uDCE4 GitHub upload complete: ${attachmentResults.uploaded} uploaded, ${attachmentResults.failed} failed`);
+          if (attachmentResults.uploaded > 0) {
+            issueData.body += this.formatScreenshotLinks(attachmentResults);
+            console.log(`✅ Added ${attachmentResults.uploaded} screenshot links to issue body`);
+          }
+        } catch (uploadError) {
+          console.error(`❌ GitHub screenshot upload failed:`, uploadError);
         }
+      } else {
+        console.log(`⚠️ GitHub screenshot upload skipped - condition not met`);
       }
       const createRequest = {
         title: issueData.title,
@@ -45912,7 +45922,11 @@ class LinearClient {
       } else {
         console.warn(`⚠️ No screenshot images available for Linear upload`);
       }
+      console.log(`\uD83D\uDCDD Preparing Linear issue with ${screenshotUrls.length} screenshot URLs...`);
       const issueData = this.prepareIssueFromTestFlight(feedback, additionalLabels, assigneeId, projectId, options, screenshotUrls);
+      console.log(`\uD83D\uDCDD Linear issue data prepared: title="${issueData.title}", teamId=${issueData.teamId}`);
+      console.log(`\uD83D\uDCDD Description preview (first 500 chars): ${issueData.description?.substring(0, 500)}...`);
+      console.log(`\uD83D\uDCE4 Calling Linear SDK createIssue...`);
       const issueCreatePayload = await this.sdk.createIssue({
         title: issueData.title,
         description: issueData.description,
@@ -45921,6 +45935,7 @@ class LinearClient {
         assigneeId: issueData.assigneeId,
         projectId: issueData.projectId
       });
+      console.log(`\uD83D\uDCE4 Linear SDK response: success=${issueCreatePayload.success}`);
       if (!issueCreatePayload.success) {
         throw new Error("Linear API error: Failed to create issue");
       }
@@ -45932,6 +45947,7 @@ class LinearClient {
       console.log(`✅ Created Linear issue: ${linearIssue.identifier} - ${linearIssue.title}`);
       return linearIssue;
     } catch (error) {
+      console.error(`❌ Linear issue creation failed:`, error);
       throw new Error(`Failed to create Linear issue from TestFlight feedback: ${error}`);
     }
   }

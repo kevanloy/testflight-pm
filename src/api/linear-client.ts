@@ -97,6 +97,7 @@ export class LinearClient {
 				console.warn(`⚠️ No screenshot images available for Linear upload`);
 			}
 
+			console.log(`📝 Preparing Linear issue with ${screenshotUrls.length} screenshot URLs...`);
 			const issueData = this.prepareIssueFromTestFlight(
 				feedback,
 				additionalLabels,
@@ -105,8 +106,11 @@ export class LinearClient {
 				options,
 				screenshotUrls,
 			);
+			console.log(`📝 Linear issue data prepared: title="${issueData.title}", teamId=${issueData.teamId}`);
+			console.log(`📝 Description preview (first 500 chars): ${issueData.description?.substring(0, 500)}...`);
 
 			// Create issue using Linear SDK
+			console.log(`📤 Calling Linear SDK createIssue...`);
 			const issueCreatePayload = await this.sdk.createIssue({
 				title: issueData.title,
 				description: issueData.description,
@@ -115,6 +119,8 @@ export class LinearClient {
 				assigneeId: issueData.assigneeId,
 				projectId: issueData.projectId,
 			});
+
+			console.log(`📤 Linear SDK response: success=${issueCreatePayload.success}`);
 
 			if (!issueCreatePayload.success) {
 				throw new Error("Linear API error: Failed to create issue");
@@ -134,6 +140,7 @@ export class LinearClient {
 			);
 			return linearIssue;
 		} catch (error) {
+			console.error(`❌ Linear issue creation failed:`, error);
 			throw new Error(
 				`Failed to create Linear issue from TestFlight feedback: ${error}`,
 			);

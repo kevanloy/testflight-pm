@@ -121,19 +121,31 @@ export class GitHubClient {
 					}>;
 				}
 				| undefined;
+
+			console.log(`🔍 DEBUG GitHub upload check: attachScreenshots=${options.attachScreenshots}, enableScreenshotUpload=${this.config.enableScreenshotUpload}, attachments.length=${issueData.attachments.length}`);
+
 			if (
 				options.attachScreenshots !== false &&
 				this.config.enableScreenshotUpload &&
 				issueData.attachments.length > 0
 			) {
-				attachmentResults = await this.uploadScreenshots(
-					issueData.attachments as GitHubScreenshotUpload[],
-					feedback,
-				);
-				// Add screenshot links to issue body
-				if (attachmentResults.uploaded > 0) {
-					issueData.body += this.formatScreenshotLinks(attachmentResults);
+				console.log(`📤 Starting GitHub screenshot upload for ${issueData.attachments.length} attachments...`);
+				try {
+					attachmentResults = await this.uploadScreenshots(
+						issueData.attachments as GitHubScreenshotUpload[],
+						feedback,
+					);
+					console.log(`📤 GitHub upload complete: ${attachmentResults.uploaded} uploaded, ${attachmentResults.failed} failed`);
+					// Add screenshot links to issue body
+					if (attachmentResults.uploaded > 0) {
+						issueData.body += this.formatScreenshotLinks(attachmentResults);
+						console.log(`✅ Added ${attachmentResults.uploaded} screenshot links to issue body`);
+					}
+				} catch (uploadError) {
+					console.error(`❌ GitHub screenshot upload failed:`, uploadError);
 				}
+			} else {
+				console.log(`⚠️ GitHub screenshot upload skipped - condition not met`);
 			}
 
 			const createRequest: GitHubCreateIssueRequest = {
