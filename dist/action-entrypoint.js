@@ -46008,17 +46008,14 @@ class LinearClient {
   async findDuplicateIssue(feedback) {
     try {
       const searchQuery = `TestFlight ID: ${feedback.id}`;
-      const issues = await this.sdk.issues({
-        filter: {
-          team: { id: { eq: this.config.teamId } },
-          or: [
-            { title: { containsIgnoreCase: feedback.id } },
-            { description: { containsIgnoreCase: searchQuery } }
-          ]
-        },
-        first: 5
+      const searchResults = await this.sdk.searchIssues(searchQuery, {
+        first: 10
       });
-      for (const issue of issues.nodes) {
+      for (const issue of searchResults.nodes) {
+        const team = await issue.team;
+        if (team?.id !== this.config.teamId) {
+          continue;
+        }
         const description = await issue.description;
         if (description?.includes(`TestFlight ID: ${feedback.id}`)) {
           return await this.convertToLinearIssue(issue);
@@ -48586,8 +48583,12 @@ class TestFlightClient {
   }
   async downloadDetailedCrashLog(crashLog) {
     try {
-      const expiresAt = new Date(crashLog.attributes.expiresAt);
-      if (expiresAt <= new Date) {
+      if (!crashLog.attributes?.downloadUrl) {
+        console.warn(`Crash log download URL not available for crash log ${crashLog.id}`);
+        return null;
+      }
+      const expiresAt = crashLog.attributes.expiresAt ? new Date(crashLog.attributes.expiresAt) : null;
+      if (expiresAt && expiresAt <= new Date) {
         console.warn(`Crash log download URL expired: ${crashLog.attributes.downloadUrl}`);
         return null;
       }
@@ -48898,29 +48899,15 @@ class TestFlightClient {
               "pairedAppleWatch",
               "screenWidthInPoints",
               "screenHeightInPoints",
-              "applicationState",
-              "memoryPressure",
-              "batteryLevel",
-              "batteryState",
-              "thermalState",
-              "diskSpaceRemaining",
-              "submissionMethod",
-              "testerNotes",
+              "locale",
+              "timeZone",
+              "deviceFamily",
+              "buildBundleId",
               "screenshots"
             ].join(",")
           }
         });
         if (processedScreenshot.screenshotData) {
-          processedScreenshot.screenshotData.testerNotes = detailedScreenshot.attributes.testerNotes;
-          processedScreenshot.screenshotData.submissionMethod = detailedScreenshot.attributes.submissionMethod;
-          processedScreenshot.screenshotData.systemInfo = {
-            applicationState: detailedScreenshot.attributes.applicationState,
-            memoryPressure: detailedScreenshot.attributes.memoryPressure,
-            batteryLevel: detailedScreenshot.attributes.batteryLevel,
-            batteryState: detailedScreenshot.attributes.batteryState,
-            thermalState: detailedScreenshot.attributes.thermalState,
-            diskSpaceRemaining: detailedScreenshot.attributes.diskSpaceRemaining
-          };
           if (detailedScreenshot.attributes.screenshots) {
             processedScreenshot.screenshotData.enhancedImages = await this.processEnhancedScreenshotImages(detailedScreenshot.attributes.screenshots);
           }

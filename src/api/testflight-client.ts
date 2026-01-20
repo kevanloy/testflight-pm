@@ -566,9 +566,15 @@ export class TestFlightClient {
 	 */
 	public async downloadDetailedCrashLog(crashLog: TestFlightCrashLog): Promise<string | null> {
 		try {
+			// Check if download URL exists
+			if (!crashLog.attributes?.downloadUrl) {
+				console.warn(`Crash log download URL not available for crash log ${crashLog.id}`);
+				return null;
+			}
+
 			// Check if URL hasn't expired
-			const expiresAt = new Date(crashLog.attributes.expiresAt);
-			if (expiresAt <= new Date()) {
+			const expiresAt = crashLog.attributes.expiresAt ? new Date(crashLog.attributes.expiresAt) : null;
+			if (expiresAt && expiresAt <= new Date()) {
 				console.warn(`Crash log download URL expired: ${crashLog.attributes.downloadUrl}`);
 				return null;
 			}
@@ -1059,6 +1065,9 @@ export class TestFlightClient {
 			// ENHANCEMENT: Get detailed screenshot submission with optimized field selection
 			try {
 				console.log(`🔍 Fetching enhanced screenshot metadata for ${screenshot.id}`);
+				// Note: Only request fields that actually exist in App Store Connect API
+				// Invalid fields removed: applicationState, memoryPressure, batteryLevel, batteryState,
+				// thermalState, diskSpaceRemaining, submissionMethod, testerNotes
 				const detailedScreenshot = await this.getDetailedScreenshotSubmission(screenshot.id, {
 					include: "build,tester",
 					fields: {
@@ -1067,28 +1076,13 @@ export class TestFlightClient {
 							"batteryPercentage", "appUptimeInMilliseconds", "connectionType",
 							"diskBytesAvailable", "diskBytesTotal", "architecture",
 							"pairedAppleWatch", "screenWidthInPoints", "screenHeightInPoints",
-							"applicationState", "memoryPressure", "batteryLevel", "batteryState",
-							"thermalState", "diskSpaceRemaining", "submissionMethod", "testerNotes",
+							"locale", "timeZone", "deviceFamily", "buildBundleId",
 							"screenshots"
 						].join(",")
 					}
 				});
 
 				if (processedScreenshot.screenshotData) {
-					// Add enhanced screenshot information
-					processedScreenshot.screenshotData.testerNotes = detailedScreenshot.attributes.testerNotes;
-					processedScreenshot.screenshotData.submissionMethod = detailedScreenshot.attributes.submissionMethod;
-
-					// Add system information if available
-					processedScreenshot.screenshotData.systemInfo = {
-						applicationState: detailedScreenshot.attributes.applicationState,
-						memoryPressure: detailedScreenshot.attributes.memoryPressure,
-						batteryLevel: detailedScreenshot.attributes.batteryLevel,
-						batteryState: detailedScreenshot.attributes.batteryState,
-						thermalState: detailedScreenshot.attributes.thermalState,
-						diskSpaceRemaining: detailedScreenshot.attributes.diskSpaceRemaining,
-					};
-
 					// Process enhanced screenshot images if available
 					if (detailedScreenshot.attributes.screenshots) {
 						processedScreenshot.screenshotData.enhancedImages =

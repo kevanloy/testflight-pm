@@ -251,21 +251,21 @@ export class LinearClient {
 		feedback: ProcessedFeedbackData,
 	): Promise<LinearIssue | null> {
 		try {
-			// Simple search for issues containing the TestFlight ID
+			// Use Linear's search API to find issues containing the TestFlight ID
 			const searchQuery = `TestFlight ID: ${feedback.id}`;
 
-			const issues = await this.sdk.issues({
-				filter: {
-					team: { id: { eq: this.config.teamId } },
-					or: [
-						{ title: { containsIgnoreCase: feedback.id } },
-						{ description: { containsIgnoreCase: searchQuery } },
-					],
-				},
-				first: 5,
+			// Use searchIssues for text-based search instead of filter operators
+			const searchResults = await this.sdk.searchIssues(searchQuery, {
+				first: 10,
 			});
 
-			for (const issue of issues.nodes) {
+			for (const issue of searchResults.nodes) {
+				// Verify the issue belongs to our team
+				const team = await issue.team;
+				if (team?.id !== this.config.teamId) {
+					continue;
+				}
+
 				const description = await issue.description;
 				if (description?.includes(`TestFlight ID: ${feedback.id}`)) {
 					return await this.convertToLinearIssue(issue);
