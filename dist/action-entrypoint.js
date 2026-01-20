@@ -48866,15 +48866,22 @@ class TestFlightClient {
           }
         });
         if (processedScreenshot.screenshotData) {
-          if (detailedScreenshot.attributes.screenshots) {
+          if (detailedScreenshot.attributes.screenshots && detailedScreenshot.attributes.screenshots.length > 0) {
+            processedScreenshot.screenshotData.images = detailedScreenshot.attributes.screenshots.map((img, index) => ({
+              url: img.url,
+              fileName: img.fileName || `screenshot_${index}.png`,
+              fileSize: img.fileSize || 0,
+              expiresAt: new Date(img.expiresAt || Date.now() + 3600000)
+            }));
             processedScreenshot.screenshotData.enhancedImages = await this.processEnhancedScreenshotImages(detailedScreenshot.attributes.screenshots);
+            console.log(`\uD83D\uDCF7 Found ${processedScreenshot.screenshotData.images.length} screenshot(s) from detailed API for ${screenshot.id}`);
           }
         }
         console.log(`✅ Enhanced screenshot metadata obtained for ${screenshot.id}`);
       } catch (error) {
         console.warn(`⚠️ Failed to get enhanced screenshot metadata for ${screenshot.id}:`, error);
       }
-      if (processedScreenshot.screenshotData?.images) {
+      if (processedScreenshot.screenshotData?.images && processedScreenshot.screenshotData.images.length > 0) {
         console.log(`\uD83D\uDCF8 Pre-downloading ${processedScreenshot.screenshotData.images.length} screenshot(s) for ${screenshot.id}...`);
         for (const imageInfo of processedScreenshot.screenshotData.images) {
           try {
@@ -48887,6 +48894,8 @@ class TestFlightClient {
             console.warn(`⚠️ Failed to pre-download screenshot ${imageInfo.fileName}:`, error);
           }
         }
+      } else {
+        console.warn(`⚠️ No screenshots available to download for ${screenshot.id}`);
       }
       processedData.push(processedScreenshot);
     }
@@ -48991,11 +49000,11 @@ class TestFlightClient {
       } : undefined,
       screenshotData: {
         text: feedbackText,
-        images: attrs.screenshots.map((img) => ({
+        images: (attrs.screenshots || []).map((img, index) => ({
           url: img.url,
-          fileName: img.fileName,
-          fileSize: img.fileSize,
-          expiresAt: new Date(img.expiresAt)
+          fileName: img.fileName || `screenshot_${index}.png`,
+          fileSize: img.fileSize || 0,
+          expiresAt: new Date(img.expiresAt || Date.now() + 3600000)
         })),
         annotations: attrs.annotations || []
       }

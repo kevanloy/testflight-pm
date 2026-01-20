@@ -1020,10 +1020,22 @@ export class TestFlightClient {
 				});
 
 				if (processedScreenshot.screenshotData) {
-					// Process enhanced screenshot images if available
-					if (detailedScreenshot.attributes.screenshots) {
+					// Process enhanced screenshot images if available from detailed API
+					if (detailedScreenshot.attributes.screenshots && detailedScreenshot.attributes.screenshots.length > 0) {
+						// IMPORTANT: The initial list API doesn't return screenshots - only the detailed API does
+						// So we need to populate the main images array from the detailed response
+						processedScreenshot.screenshotData.images = detailedScreenshot.attributes.screenshots.map((img, index) => ({
+							url: img.url,
+							fileName: img.fileName || `screenshot_${index}.png`,
+							fileSize: img.fileSize || 0,
+							expiresAt: new Date(img.expiresAt || Date.now() + 3600000),
+						}));
+
+						// Also store enhanced metadata
 						processedScreenshot.screenshotData.enhancedImages =
 							await this.processEnhancedScreenshotImages(detailedScreenshot.attributes.screenshots);
+
+						console.log(`📷 Found ${processedScreenshot.screenshotData.images.length} screenshot(s) from detailed API for ${screenshot.id}`);
 					}
 				}
 
@@ -1035,7 +1047,7 @@ export class TestFlightClient {
 
 			// CRITICAL: Download screenshots immediately to avoid URL expiration
 			// TestFlight URLs expire quickly, so we cache the data now before any rate limiting delays
-			if (processedScreenshot.screenshotData?.images) {
+			if (processedScreenshot.screenshotData?.images && processedScreenshot.screenshotData.images.length > 0) {
 				console.log(`📸 Pre-downloading ${processedScreenshot.screenshotData.images.length} screenshot(s) for ${screenshot.id}...`);
 				for (const imageInfo of processedScreenshot.screenshotData.images) {
 					try {
@@ -1048,6 +1060,8 @@ export class TestFlightClient {
 						console.warn(`⚠️ Failed to pre-download screenshot ${imageInfo.fileName}:`, error);
 					}
 				}
+			} else {
+				console.warn(`⚠️ No screenshots available to download for ${screenshot.id}`);
 			}
 
 			processedData.push(processedScreenshot);
@@ -1191,11 +1205,11 @@ export class TestFlightClient {
 			} : undefined,
 			screenshotData: {
 				text: feedbackText,
-				images: attrs.screenshots.map((img) => ({
+				images: (attrs.screenshots || []).map((img, index) => ({
 					url: img.url,
-					fileName: img.fileName,
-					fileSize: img.fileSize,
-					expiresAt: new Date(img.expiresAt),
+					fileName: img.fileName || `screenshot_${index}.png`,
+					fileSize: img.fileSize || 0,
+					expiresAt: new Date(img.expiresAt || Date.now() + 3600000), // Default 1 hour if missing
 				})),
 				annotations: attrs.annotations || [],
 			},
