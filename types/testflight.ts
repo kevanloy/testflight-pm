@@ -413,6 +413,7 @@ export interface ProcessedFeedbackData {
 			fileName: string;
 			fileSize: number;
 			expiresAt: Date;
+			cachedData?: Uint8Array; // Pre-downloaded image data to avoid URL expiration
 		}>;
 		annotations?: ScreenshotAnnotation[];
 		enhancedImages?: EnhancedScreenshotImage[]; // Enhanced screenshot data from detailed API

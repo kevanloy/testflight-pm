@@ -28534,42 +28534,30 @@ ${feedback.crashData.trace}
       return [];
     }
     const attachments = [];
-    if (feedback.screenshotData.enhancedImages) {
-      for (const enhancedImage of feedback.screenshotData.enhancedImages) {
-        try {
-          const imageData = await this.downloadSingleScreenshotImageData(enhancedImage);
-          if (imageData) {
-            attachments.push({
-              filename: enhancedImage.fileName,
-              content: imageData,
-              contentType: this.getContentTypeFromFormat(enhancedImage.imageFormat || "png"),
-              size: imageData.length
-            });
-          }
-        } catch (error) {
-          console.warn(`Failed to download enhanced screenshot ${enhancedImage.fileName}:`, error);
-        }
-      }
-    } else {
-      for (const imageInfo of feedback.screenshotData.images) {
-        try {
-          const imageData = await this.downloadSingleScreenshotImageData({
+    for (const imageInfo of feedback.screenshotData.images) {
+      try {
+        let imageData;
+        if (imageInfo.cachedData) {
+          console.log(`\uD83D\uDCF8 Using cached screenshot: ${imageInfo.fileName}`);
+          imageData = imageInfo.cachedData;
+        } else {
+          imageData = await this.downloadSingleScreenshotImageData({
             url: imageInfo.url,
             fileName: imageInfo.fileName,
             fileSize: imageInfo.fileSize,
             expiresAt: imageInfo.expiresAt
           });
-          if (imageData) {
-            attachments.push({
-              filename: imageInfo.fileName,
-              content: imageData,
-              contentType: this.getContentTypeFromFileName(imageInfo.fileName),
-              size: imageData.length
-            });
-          }
-        } catch (error) {
-          console.warn(`Failed to download screenshot ${imageInfo.fileName}:`, error);
         }
+        if (imageData) {
+          attachments.push({
+            filename: imageInfo.fileName,
+            content: imageData,
+            contentType: this.getContentTypeFromFileName(imageInfo.fileName),
+            size: imageData.length
+          });
+        }
+      } catch (error) {
+        console.warn(`Failed to get screenshot ${imageInfo.fileName}:`, error);
       }
     }
     return attachments;
@@ -46651,22 +46639,28 @@ ${feedback.crashData.trace}
     }
     for (const imageInfo of feedback.screenshotData.images) {
       try {
-        if (imageInfo.expiresAt <= new Date) {
-          console.warn(`Screenshot URL expired: ${imageInfo.url}`);
-          results.failed++;
-          continue;
+        let imageData;
+        if (imageInfo.cachedData) {
+          console.log(`\uD83D\uDCF8 Using cached screenshot: ${imageInfo.fileName}`);
+          imageData = imageInfo.cachedData;
+        } else {
+          if (imageInfo.expiresAt <= new Date) {
+            console.warn(`Screenshot URL expired: ${imageInfo.url}`);
+            results.failed++;
+            continue;
+          }
+          console.log(`\uD83D\uDCF8 Downloading screenshot: ${imageInfo.fileName}`);
+          const response = await fetch(imageInfo.url, {
+            headers: { "User-Agent": "TestFlight-PM/1.0" },
+            signal: AbortSignal.timeout(30000)
+          });
+          if (!response.ok) {
+            console.warn(`Failed to download screenshot: ${response.status} ${response.statusText}`);
+            results.failed++;
+            continue;
+          }
+          imageData = new Uint8Array(await response.arrayBuffer());
         }
-        console.log(`\uD83D\uDCF8 Downloading screenshot: ${imageInfo.fileName}`);
-        const response = await fetch(imageInfo.url, {
-          headers: { "User-Agent": "TestFlight-PM/1.0" },
-          signal: AbortSignal.timeout(30000)
-        });
-        if (!response.ok) {
-          console.warn(`Failed to download screenshot: ${response.status} ${response.statusText}`);
-          results.failed++;
-          continue;
-        }
-        const imageData = new Uint8Array(await response.arrayBuffer());
         const contentType = this.getContentTypeFromFileName(imageInfo.fileName);
         console.log(`\uD83D\uDCE4 Requesting Linear upload URL for: ${imageInfo.fileName}`);
         const uploadPayload = await this.sdk.fileUpload(contentType, imageInfo.fileName, imageData.length);
@@ -48869,6 +48863,20 @@ class TestFlightClient {
         console.log(`✅ Enhanced screenshot metadata obtained for ${screenshot.id}`);
       } catch (error) {
         console.warn(`⚠️ Failed to get enhanced screenshot metadata for ${screenshot.id}:`, error);
+      }
+      if (processedScreenshot.screenshotData?.images) {
+        console.log(`\uD83D\uDCF8 Pre-downloading ${processedScreenshot.screenshotData.images.length} screenshot(s) for ${screenshot.id}...`);
+        for (const imageInfo of processedScreenshot.screenshotData.images) {
+          try {
+            const imageData = await this.downloadSingleScreenshotImage(imageInfo);
+            if (imageData) {
+              imageInfo.cachedData = imageData;
+              console.log(`✅ Cached screenshot: ${imageInfo.fileName} (${imageData.length} bytes)`);
+            }
+          } catch (error) {
+            console.warn(`⚠️ Failed to pre-download screenshot ${imageInfo.fileName}:`, error);
+          }
+        }
       }
       processedData.push(processedScreenshot);
     }

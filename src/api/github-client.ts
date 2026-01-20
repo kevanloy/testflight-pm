@@ -1194,6 +1194,7 @@ export class GitHubClient {
 
 	/**
 	 * Downloads screenshots for TestFlight feedback using enhanced methods (DRY)
+	 * Uses pre-cached data when available to avoid URL expiration issues
 	 */
 	private async downloadScreenshotsForFeedback(
 		feedback: ProcessedFeedbackData,
@@ -1204,46 +1205,35 @@ export class GitHubClient {
 
 		const attachments: GitHubScreenshotUpload[] = [];
 
-		// Use enhanced screenshots if available, fallback to regular images
-		if (feedback.screenshotData.enhancedImages) {
-			// Process enhanced screenshots with metadata
-			for (const enhancedImage of feedback.screenshotData.enhancedImages) {
-				try {
-					const imageData = await this.downloadSingleScreenshotImageData(enhancedImage);
-					if (imageData) {
-						attachments.push({
-							filename: enhancedImage.fileName,
-							content: imageData,
-							contentType: this.getContentTypeFromFormat(enhancedImage.imageFormat || 'png'),
-							size: imageData.length,
-						});
-					}
-				} catch (error) {
-					console.warn(`Failed to download enhanced screenshot ${enhancedImage.fileName}:`, error);
-				}
-			}
-		} else {
-			// Fallback to regular screenshot processing
-			for (const imageInfo of feedback.screenshotData.images) {
-				try {
-					const imageData = await this.downloadSingleScreenshotImageData({
+		// Process screenshots - prefer cached data over downloading
+		for (const imageInfo of feedback.screenshotData.images) {
+			try {
+				let imageData: Uint8Array | null;
+
+				// Use cached data if available (pre-downloaded to avoid URL expiration)
+				if (imageInfo.cachedData) {
+					console.log(`📸 Using cached screenshot: ${imageInfo.fileName}`);
+					imageData = imageInfo.cachedData;
+				} else {
+					// Fall back to downloading if not cached
+					imageData = await this.downloadSingleScreenshotImageData({
 						url: imageInfo.url,
 						fileName: imageInfo.fileName,
 						fileSize: imageInfo.fileSize,
 						expiresAt: imageInfo.expiresAt,
 					});
-
-					if (imageData) {
-						attachments.push({
-							filename: imageInfo.fileName,
-							content: imageData,
-							contentType: this.getContentTypeFromFileName(imageInfo.fileName),
-							size: imageData.length,
-						});
-					}
-				} catch (error) {
-					console.warn(`Failed to download screenshot ${imageInfo.fileName}:`, error);
 				}
+
+				if (imageData) {
+					attachments.push({
+						filename: imageInfo.fileName,
+						content: imageData,
+						contentType: this.getContentTypeFromFileName(imageInfo.fileName),
+						size: imageData.length,
+					});
+				}
+			} catch (error) {
+				console.warn(`Failed to get screenshot ${imageInfo.fileName}:`, error);
 			}
 		}
 

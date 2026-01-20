@@ -1033,6 +1033,23 @@ export class TestFlightClient {
 				// Continue with basic data if enhanced fails
 			}
 
+			// CRITICAL: Download screenshots immediately to avoid URL expiration
+			// TestFlight URLs expire quickly, so we cache the data now before any rate limiting delays
+			if (processedScreenshot.screenshotData?.images) {
+				console.log(`📸 Pre-downloading ${processedScreenshot.screenshotData.images.length} screenshot(s) for ${screenshot.id}...`);
+				for (const imageInfo of processedScreenshot.screenshotData.images) {
+					try {
+						const imageData = await this.downloadSingleScreenshotImage(imageInfo);
+						if (imageData) {
+							imageInfo.cachedData = imageData;
+							console.log(`✅ Cached screenshot: ${imageInfo.fileName} (${imageData.length} bytes)`);
+						}
+					} catch (error) {
+						console.warn(`⚠️ Failed to pre-download screenshot ${imageInfo.fileName}:`, error);
+					}
+				}
+			}
+
 			processedData.push(processedScreenshot);
 		}
 	}

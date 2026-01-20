@@ -1045,27 +1045,37 @@ export class LinearClient {
 
 		for (const imageInfo of feedback.screenshotData.images) {
 			try {
-				// Check if URL hasn't expired
-				if (imageInfo.expiresAt <= new Date()) {
-					console.warn(`Screenshot URL expired: ${imageInfo.url}`);
-					results.failed++;
-					continue;
+				let imageData: Uint8Array;
+
+				// Use cached data if available (pre-downloaded to avoid URL expiration)
+				if (imageInfo.cachedData) {
+					console.log(`📸 Using cached screenshot: ${imageInfo.fileName}`);
+					imageData = imageInfo.cachedData;
+				} else {
+					// Fall back to downloading if not cached
+					// Check if URL hasn't expired
+					if (imageInfo.expiresAt <= new Date()) {
+						console.warn(`Screenshot URL expired: ${imageInfo.url}`);
+						results.failed++;
+						continue;
+					}
+
+					// Download the screenshot from TestFlight's temporary URL
+					console.log(`📸 Downloading screenshot: ${imageInfo.fileName}`);
+					const response = await fetch(imageInfo.url, {
+						headers: { "User-Agent": "TestFlight-PM/1.0" },
+						signal: AbortSignal.timeout(30000),
+					});
+
+					if (!response.ok) {
+						console.warn(`Failed to download screenshot: ${response.status} ${response.statusText}`);
+						results.failed++;
+						continue;
+					}
+
+					imageData = new Uint8Array(await response.arrayBuffer());
 				}
 
-				// Download the screenshot from TestFlight's temporary URL
-				console.log(`📸 Downloading screenshot: ${imageInfo.fileName}`);
-				const response = await fetch(imageInfo.url, {
-					headers: { "User-Agent": "TestFlight-PM/1.0" },
-					signal: AbortSignal.timeout(30000),
-				});
-
-				if (!response.ok) {
-					console.warn(`Failed to download screenshot: ${response.status} ${response.statusText}`);
-					results.failed++;
-					continue;
-				}
-
-				const imageData = new Uint8Array(await response.arrayBuffer());
 				const contentType = this.getContentTypeFromFileName(imageInfo.fileName);
 
 				// Request upload URL from Linear
