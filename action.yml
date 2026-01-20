@@ -189,7 +189,7 @@ outputs:
 
 runs:
   using: "node20"
-  main: "dist/action-entrypoint.js"
+  main: "dist/action-entrypoint.cjs"
 
 branding:
   icon: "alert-circle"
