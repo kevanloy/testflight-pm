@@ -46371,7 +46371,9 @@ class LinearClient {
       }
     }
     let description = options?.customDescription || this.generateStandardDescription(feedback, typeIcon, typeLabel, screenshotUrls);
-    if (options?.customDescription && screenshotUrls.length > 0) {
+    console.log(`\uD83D\uDD0D DEBUG: customDescription=${!!options?.customDescription}, screenshotUrls.length=${screenshotUrls.length}`);
+    if (screenshotUrls.length > 0) {
+      console.log(`\uD83D\uDCF8 Appending ${screenshotUrls.length} screenshots to description`);
       description += `
 
 ### \uD83D\uDCF8 Screenshots
@@ -46384,6 +46386,8 @@ class LinearClient {
 
 `;
       }
+    } else {
+      console.log(`⚠️ No screenshot URLs to append`);
     }
     const baseLabels = isCrash ? this.config.crashLabels : this.config.feedbackLabels;
     const allLabels = [

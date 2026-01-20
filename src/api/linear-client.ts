@@ -736,12 +736,16 @@ export class LinearClient {
 
 		// Always append screenshots to description if we have URLs (even with custom descriptions)
 		// Custom descriptions from LLM don't include screenshots, so we need to add them
-		if (options?.customDescription && screenshotUrls.length > 0) {
+		console.log(`🔍 DEBUG: customDescription=${!!options?.customDescription}, screenshotUrls.length=${screenshotUrls.length}`);
+		if (screenshotUrls.length > 0) {
+			console.log(`📸 Appending ${screenshotUrls.length} screenshots to description`);
 			description += "\n\n### 📸 Screenshots\n\n";
 			for (const screenshot of screenshotUrls) {
 				description += `**${screenshot.filename}:**\n`;
 				description += `![${screenshot.filename}](${screenshot.url})\n\n`;
 			}
+		} else {
+			console.log(`⚠️ No screenshot URLs to append`);
 		}
 
 		// Determine labels
