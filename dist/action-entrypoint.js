@@ -45919,6 +45919,18 @@ class LinearClient {
         screenshotUrls = uploadResult.urls;
         console.log(`✅ Uploaded ${uploadResult.uploaded} screenshot(s), ${uploadResult.failed} failed`);
         console.log(`\uD83D\uDD0D DEBUG Linear: Screenshot URLs: ${JSON.stringify(screenshotUrls)}`);
+        if (screenshotUrls.length === 0 && feedback.screenshotData.images.length > 0) {
+          console.log(`⚠️ Upload failed, falling back to Apple's direct URLs`);
+          for (const img of feedback.screenshotData.images) {
+            if (img.url) {
+              screenshotUrls.push({
+                filename: img.fileName || "screenshot.png",
+                url: img.url
+              });
+            }
+          }
+          console.log(`\uD83D\uDCCE Using ${screenshotUrls.length} Apple direct URL(s) as fallback`);
+        }
       } else {
         console.warn(`⚠️ No screenshot images available for Linear upload`);
       }
@@ -48495,8 +48507,10 @@ class TestFlightClient {
         console.log(`\uD83D\uDCF8 Downloading screenshot (attempt ${attempt}/${maxRetries}): ${imageInfo.fileName}`);
         const response = await fetch(imageInfo.url, {
           headers: {
-            "User-Agent": "TestFlight-PM/1.0",
-            Accept: "image/*"
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Cache-Control": "no-cache"
           },
           signal: AbortSignal.timeout(this.defaultTimeout)
         });

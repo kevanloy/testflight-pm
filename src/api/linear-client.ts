@@ -93,6 +93,20 @@ export class LinearClient {
 				screenshotUrls = uploadResult.urls;
 				console.log(`✅ Uploaded ${uploadResult.uploaded} screenshot(s), ${uploadResult.failed} failed`);
 				console.log(`🔍 DEBUG Linear: Screenshot URLs: ${JSON.stringify(screenshotUrls)}`);
+
+				// If upload failed, fall back to using Apple's direct URLs (they expire but better than nothing)
+				if (screenshotUrls.length === 0 && feedback.screenshotData.images.length > 0) {
+					console.log(`⚠️ Upload failed, falling back to Apple's direct URLs`);
+					for (const img of feedback.screenshotData.images) {
+						if (img.url) {
+							screenshotUrls.push({
+								filename: img.fileName || 'screenshot.png',
+								url: img.url,
+							});
+						}
+					}
+					console.log(`📎 Using ${screenshotUrls.length} Apple direct URL(s) as fallback`);
+				}
 			} else {
 				console.warn(`⚠️ No screenshot images available for Linear upload`);
 			}
