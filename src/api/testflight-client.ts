@@ -99,49 +99,28 @@ export class TestFlightClient {
 
 	/**
 	 * Gets screenshot submissions for a specific app with date filtering
-	 * Handles the API's 'createdDate' field requirements and provides fallback filtering
+	 * Note: Apple API does not support filter[createdDate], only sort by createdDate
+	 * So we fetch sorted results and filter client-side
 	 */
 	private async getAppScreenshotSubmissionsWithDateFilter(
 		appId: string,
 		since: Date,
 	): Promise<TestFlightScreenshotFeedback[]> {
-		try {
-			// First try with API-level date filtering using createdDate
-			const isoDate = since.toISOString();
-			const apiFilteredResults = await this.getAppScreenshotSubmissions(appId, {
-				filter: {
-					createdDate: `>${isoDate}`,
-				},
-				limit: 100,
-			});
+		// Fetch results sorted by -createdDate (newest first) and filter client-side
+		// Apple API does not support filter[createdDate] - only sort is supported
+		const allRecentScreenshots = await this.getAppScreenshotSubmissions(appId, {
+			limit: DEFAULT_TESTFLIGHT_CONFIG.MAX_LIMIT,
+			sort: "-createdDate",
+		});
 
-			console.log(`✅ API-level date filtering successful for screenshot submissions`);
-			return apiFilteredResults;
-		} catch (error) {
-			// If API filtering fails, fall back to fetching more data and filtering client-side
-			const errorMessage = error instanceof Error ? error.message : String(error);
-			console.warn(`⚠️ API-level date filtering failed for screenshot submissions: ${errorMessage}`);
-			console.log(`🔄 Falling back to client-side filtering...`);
+		// Filter client-side based on createdDate
+		const filteredScreenshots = allRecentScreenshots.filter(screenshot => {
+			const createdDate = new Date(screenshot.attributes.createdDate || screenshot.attributes.submittedAt || 0);
+			return createdDate >= since;
+		});
 
-			try {
-				// Fetch broader dataset (last 7 days worth to be safe)
-				const allRecentScreenshots = await this.getAppScreenshotSubmissions(appId, {
-					limit: DEFAULT_TESTFLIGHT_CONFIG.MAX_LIMIT, // Get more results
-				});
-
-				// Filter client-side based on actual createdDate or submittedAt fields
-				const filteredScreenshots = allRecentScreenshots.filter(screenshot => {
-					const createdDate = new Date(screenshot.attributes.createdDate || screenshot.attributes.submittedAt || 0);
-					return createdDate >= since;
-				});
-
-				console.log(`✅ Client-side filtering successful: ${filteredScreenshots.length}/${allRecentScreenshots.length} screenshot submissions match date filter`);
-				return filteredScreenshots;
-			} catch (fallbackError) {
-				console.error(`❌ Both API and client-side filtering failed for screenshot submissions:`, fallbackError);
-				throw fallbackError;
-			}
-		}
+		console.log(`✅ Fetched ${allRecentScreenshots.length} screenshot submissions, ${filteredScreenshots.length} match date filter (since ${since.toISOString()})`);
+		return filteredScreenshots;
 	}
 
 	/**
@@ -475,49 +454,28 @@ export class TestFlightClient {
 
 	/**
 	 * Gets crash submissions for a specific app with date filtering
-	 * Handles the API's 'createdDate' field requirements and provides fallback filtering
+	 * Note: Apple API does not support filter[createdDate], only sort by createdDate
+	 * So we fetch sorted results and filter client-side
 	 */
 	private async getAppCrashSubmissionsWithDateFilter(
 		appId: string,
 		since: Date,
 	): Promise<TestFlightCrashReport[]> {
-		try {
-			// First try with API-level date filtering using createdDate
-			const isoDate = since.toISOString();
-			const apiFilteredResults = await this.getAppCrashSubmissions(appId, {
-				filter: {
-					createdDate: `>${isoDate}`,
-				},
-				limit: 100,
-			});
+		// Fetch results sorted by -createdDate (newest first) and filter client-side
+		// Apple API does not support filter[createdDate] - only sort is supported
+		const allRecentCrashes = await this.getAppCrashSubmissions(appId, {
+			limit: DEFAULT_TESTFLIGHT_CONFIG.MAX_LIMIT,
+			sort: "-createdDate",
+		});
 
-			console.log(`✅ API-level date filtering successful for crash submissions`);
-			return apiFilteredResults;
-		} catch (error) {
-			// If API filtering fails, fall back to fetching more data and filtering client-side
-			const errorMessage = error instanceof Error ? error.message : String(error);
-			console.warn(`⚠️ API-level date filtering failed for crash submissions: ${errorMessage}`);
-			console.log(`🔄 Falling back to client-side filtering...`);
+		// Filter client-side based on createdDate
+		const filteredCrashes = allRecentCrashes.filter(crash => {
+			const createdDate = new Date(crash.attributes.createdDate || crash.attributes.submittedAt || 0);
+			return createdDate >= since;
+		});
 
-			try {
-				// Fetch broader dataset (last 7 days worth to be safe)
-				const allRecentCrashes = await this.getAppCrashSubmissions(appId, {
-					limit: DEFAULT_TESTFLIGHT_CONFIG.MAX_LIMIT, // Get more results
-				});
-
-				// Filter client-side based on actual createdDate or submittedAt fields
-				const filteredCrashes = allRecentCrashes.filter(crash => {
-					const createdDate = new Date(crash.attributes.createdDate || crash.attributes.submittedAt || 0);
-					return createdDate >= since;
-				});
-
-				console.log(`✅ Client-side filtering successful: ${filteredCrashes.length}/${allRecentCrashes.length} crash submissions match date filter`);
-				return filteredCrashes;
-			} catch (fallbackError) {
-				console.error(`❌ Both API and client-side filtering failed for crash submissions:`, fallbackError);
-				throw fallbackError;
-			}
-		}
+		console.log(`✅ Fetched ${allRecentCrashes.length} crash submissions, ${filteredCrashes.length} match date filter (since ${since.toISOString()})`);
+		return filteredCrashes;
 	}
 
 	/**
@@ -537,14 +495,18 @@ export class TestFlightClient {
 
 	/**
 	 * Gets the actual crash log content for a crash submission
+	 * According to Apple API docs, the only valid field is 'logText'
 	 */
 	public async getCrashLog(
 		crashId: string,
-		params?: TestFlightQueryParams,
 	): Promise<TestFlightCrashLog> {
 		const response = await this.makeApiRequest<CrashLogResponse>(
 			`/betaFeedbackCrashSubmissions/${crashId}/crashLog`,
-			params,
+			{
+				fields: {
+					betaCrashLogs: "logText",
+				},
+			},
 		);
 
 		return response.data;
@@ -562,42 +524,15 @@ export class TestFlightClient {
 	}
 
 	/**
-	 * Downloads the actual crash log content from the download URL
+	 * Gets the crash log text content from a TestFlightCrashLog object
+	 * According to Apple API docs, the log content is returned directly in logText field
 	 */
-	public async downloadDetailedCrashLog(crashLog: TestFlightCrashLog): Promise<string | null> {
-		try {
-			// Check if download URL exists
-			if (!crashLog.attributes?.downloadUrl) {
-				console.warn(`Crash log download URL not available for crash log ${crashLog.id}`);
-				return null;
-			}
-
-			// Check if URL hasn't expired
-			const expiresAt = crashLog.attributes.expiresAt ? new Date(crashLog.attributes.expiresAt) : null;
-			if (expiresAt && expiresAt <= new Date()) {
-				console.warn(`Crash log download URL expired: ${crashLog.attributes.downloadUrl}`);
-				return null;
-			}
-
-			const response = await fetch(crashLog.attributes.downloadUrl, {
-				headers: {
-					"User-Agent": "TestFlight-PM/1.0",
-				},
-				signal: AbortSignal.timeout(this.defaultTimeout),
-			});
-
-			if (!response.ok) {
-				console.warn(
-					`Failed to download detailed crash log: ${response.status} ${response.statusText}`,
-				);
-				return null;
-			}
-
-			return await response.text();
-		} catch (error) {
-			console.warn(`Error downloading detailed crash log:`, error);
+	public getCrashLogText(crashLog: TestFlightCrashLog): string | null {
+		if (!crashLog.attributes?.logText) {
+			console.warn(`Crash log text not available for crash log ${crashLog.id}`);
 			return null;
 		}
+		return crashLog.attributes.logText;
 	}
 
 	/**
@@ -1041,10 +976,10 @@ export class TestFlightClient {
 			// Get detailed crash log content
 			try {
 				const crashLog = await this.getCrashLog(crash.id);
-				const detailedLogContent = await this.downloadDetailedCrashLog(crashLog);
+				const logText = this.getCrashLogText(crashLog);
 
-				if (detailedLogContent && processedCrash.crashData) {
-					processedCrash.crashData.detailedLogs = [detailedLogContent];
+				if (logText && processedCrash.crashData) {
+					processedCrash.crashData.detailedLogs = [logText];
 				}
 			} catch (error) {
 				console.warn(`Failed to get detailed crash log for ${crash.id}:`, error);

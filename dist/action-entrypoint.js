@@ -48328,35 +48328,16 @@ class TestFlightClient {
     return response.data;
   }
   async getAppScreenshotSubmissionsWithDateFilter(appId, since) {
-    try {
-      const isoDate = since.toISOString();
-      const apiFilteredResults = await this.getAppScreenshotSubmissions(appId, {
-        filter: {
-          createdDate: `>${isoDate}`
-        },
-        limit: 100
-      });
-      console.log(`✅ API-level date filtering successful for screenshot submissions`);
-      return apiFilteredResults;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.warn(`⚠️ API-level date filtering failed for screenshot submissions: ${errorMessage}`);
-      console.log(`\uD83D\uDD04 Falling back to client-side filtering...`);
-      try {
-        const allRecentScreenshots = await this.getAppScreenshotSubmissions(appId, {
-          limit: DEFAULT_TESTFLIGHT_CONFIG.MAX_LIMIT
-        });
-        const filteredScreenshots = allRecentScreenshots.filter((screenshot) => {
-          const createdDate = new Date(screenshot.attributes.createdDate || screenshot.attributes.submittedAt || 0);
-          return createdDate >= since;
-        });
-        console.log(`✅ Client-side filtering successful: ${filteredScreenshots.length}/${allRecentScreenshots.length} screenshot submissions match date filter`);
-        return filteredScreenshots;
-      } catch (fallbackError) {
-        console.error(`❌ Both API and client-side filtering failed for screenshot submissions:`, fallbackError);
-        throw fallbackError;
-      }
-    }
+    const allRecentScreenshots = await this.getAppScreenshotSubmissions(appId, {
+      limit: DEFAULT_TESTFLIGHT_CONFIG.MAX_LIMIT,
+      sort: "-createdDate"
+    });
+    const filteredScreenshots = allRecentScreenshots.filter((screenshot) => {
+      const createdDate = new Date(screenshot.attributes.createdDate || screenshot.attributes.submittedAt || 0);
+      return createdDate >= since;
+    });
+    console.log(`✅ Fetched ${allRecentScreenshots.length} screenshot submissions, ${filteredScreenshots.length} match date filter (since ${since.toISOString()})`);
+    return filteredScreenshots;
   }
   async getDetailedScreenshotSubmission(screenshotId, params) {
     const response = await this.makeApiRequest(`/betaFeedbackScreenshotSubmissions/${screenshotId}`, params);
@@ -48540,73 +48521,38 @@ class TestFlightClient {
     return response.data;
   }
   async getAppCrashSubmissionsWithDateFilter(appId, since) {
-    try {
-      const isoDate = since.toISOString();
-      const apiFilteredResults = await this.getAppCrashSubmissions(appId, {
-        filter: {
-          createdDate: `>${isoDate}`
-        },
-        limit: 100
-      });
-      console.log(`✅ API-level date filtering successful for crash submissions`);
-      return apiFilteredResults;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.warn(`⚠️ API-level date filtering failed for crash submissions: ${errorMessage}`);
-      console.log(`\uD83D\uDD04 Falling back to client-side filtering...`);
-      try {
-        const allRecentCrashes = await this.getAppCrashSubmissions(appId, {
-          limit: DEFAULT_TESTFLIGHT_CONFIG.MAX_LIMIT
-        });
-        const filteredCrashes = allRecentCrashes.filter((crash) => {
-          const createdDate = new Date(crash.attributes.createdDate || crash.attributes.submittedAt || 0);
-          return createdDate >= since;
-        });
-        console.log(`✅ Client-side filtering successful: ${filteredCrashes.length}/${allRecentCrashes.length} crash submissions match date filter`);
-        return filteredCrashes;
-      } catch (fallbackError) {
-        console.error(`❌ Both API and client-side filtering failed for crash submissions:`, fallbackError);
-        throw fallbackError;
-      }
-    }
+    const allRecentCrashes = await this.getAppCrashSubmissions(appId, {
+      limit: DEFAULT_TESTFLIGHT_CONFIG.MAX_LIMIT,
+      sort: "-createdDate"
+    });
+    const filteredCrashes = allRecentCrashes.filter((crash) => {
+      const createdDate = new Date(crash.attributes.createdDate || crash.attributes.submittedAt || 0);
+      return createdDate >= since;
+    });
+    console.log(`✅ Fetched ${allRecentCrashes.length} crash submissions, ${filteredCrashes.length} match date filter (since ${since.toISOString()})`);
+    return filteredCrashes;
   }
   async getDetailedCrashSubmission(crashId, params) {
     const response = await this.makeApiRequest(`/betaFeedbackCrashSubmissions/${crashId}`, params);
     return response.data;
   }
-  async getCrashLog(crashId, params) {
-    const response = await this.makeApiRequest(`/betaFeedbackCrashSubmissions/${crashId}/crashLog`, params);
+  async getCrashLog(crashId) {
+    const response = await this.makeApiRequest(`/betaFeedbackCrashSubmissions/${crashId}/crashLog`, {
+      fields: {
+        betaCrashLogs: "logText"
+      }
+    });
     return response.data;
   }
   async getCrashLogRelationships(crashId) {
     return await this.makeApiRequest(`/betaFeedbackCrashSubmissions/${crashId}/relationships/crashLog`);
   }
-  async downloadDetailedCrashLog(crashLog) {
-    try {
-      if (!crashLog.attributes?.downloadUrl) {
-        console.warn(`Crash log download URL not available for crash log ${crashLog.id}`);
-        return null;
-      }
-      const expiresAt = crashLog.attributes.expiresAt ? new Date(crashLog.attributes.expiresAt) : null;
-      if (expiresAt && expiresAt <= new Date) {
-        console.warn(`Crash log download URL expired: ${crashLog.attributes.downloadUrl}`);
-        return null;
-      }
-      const response = await fetch(crashLog.attributes.downloadUrl, {
-        headers: {
-          "User-Agent": "TestFlight-PM/1.0"
-        },
-        signal: AbortSignal.timeout(this.defaultTimeout)
-      });
-      if (!response.ok) {
-        console.warn(`Failed to download detailed crash log: ${response.status} ${response.statusText}`);
-        return null;
-      }
-      return await response.text();
-    } catch (error) {
-      console.warn(`Error downloading detailed crash log:`, error);
+  getCrashLogText(crashLog) {
+    if (!crashLog.attributes?.logText) {
+      console.warn(`Crash log text not available for crash log ${crashLog.id}`);
       return null;
     }
+    return crashLog.attributes.logText;
   }
   async resolveAppId(bundleId) {
     const providedAppId = this.appId;
@@ -48872,9 +48818,9 @@ class TestFlightClient {
       }
       try {
         const crashLog = await this.getCrashLog(crash.id);
-        const detailedLogContent = await this.downloadDetailedCrashLog(crashLog);
-        if (detailedLogContent && processedCrash.crashData) {
-          processedCrash.crashData.detailedLogs = [detailedLogContent];
+        const logText = this.getCrashLogText(crashLog);
+        if (logText && processedCrash.crashData) {
+          processedCrash.crashData.detailedLogs = [logText];
         }
       } catch (error) {
         console.warn(`Failed to get detailed crash log for ${crash.id}:`, error);

@@ -436,15 +436,12 @@ export interface ProcessedFeedbackData {
 }
 
 // Detailed crash log content from /betaFeedbackCrashSubmissions/{id}/crashLog
+// According to Apple API docs, only field available is 'logText'
 export interface TestFlightCrashLog {
 	id: string;
-	type: "betaFeedbackCrashLogs";
+	type: "betaCrashLogs";
 	attributes: {
-		downloadUrl: string;
-		fileName: string;
-		fileSize: number;
-		expiresAt: string;
-		crashLogFormatVersion: string;
+		logText: string;
 	};
 	relationships?: {
 		betaFeedbackCrashSubmission?: {
