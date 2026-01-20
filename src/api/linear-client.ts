@@ -82,12 +82,22 @@ export class LinearClient {
 				}
 			}
 
+			// Upload screenshots to Linear before creating the issue
+			let screenshotUrls: Array<{ filename: string; url: string }> = [];
+			if (feedback.screenshotData?.images && feedback.screenshotData.images.length > 0) {
+				console.log(`📸 Uploading ${feedback.screenshotData.images.length} screenshot(s) to Linear...`);
+				const uploadResult = await this.uploadScreenshots(feedback);
+				screenshotUrls = uploadResult.urls;
+				console.log(`✅ Uploaded ${uploadResult.uploaded} screenshot(s), ${uploadResult.failed} failed`);
+			}
+
 			const issueData = this.prepareIssueFromTestFlight(
 				feedback,
 				additionalLabels,
 				assigneeId,
 				projectId,
 				options,
+				screenshotUrls,
 			);
 
 			// Create issue using Linear SDK
@@ -687,6 +697,7 @@ export class LinearClient {
 			customDescription?: string;
 			priority?: LinearPriority;
 		},
+		screenshotUrls: Array<{ filename: string; url: string }> = [],
 	) {
 		const isCrash = feedback.type === "crash";
 		const typeIcon = isCrash ? "💥" : "📱";
@@ -708,7 +719,7 @@ export class LinearClient {
 
 		// Generate description - use enhanced description if provided, otherwise generate standard description
 		const description = options?.customDescription ||
-			this.generateStandardDescription(feedback, typeIcon, typeLabel);
+			this.generateStandardDescription(feedback, typeIcon, typeLabel, screenshotUrls);
 
 		// Determine labels
 		const baseLabels = isCrash
@@ -744,6 +755,7 @@ export class LinearClient {
 		feedback: ProcessedFeedbackData,
 		typeIcon: string,
 		typeLabel: string,
+		screenshotUrls: Array<{ filename: string; url: string }> = [],
 	): string {
 		const isCrash = feedback.type === "crash";
 
@@ -758,7 +770,13 @@ export class LinearClient {
 		description += `| **Submitted** | ${feedback.submittedAt.toISOString()} |\n`;
 		description += `| **Device** | ${feedback.deviceInfo.model} |\n`;
 		description += `| **OS Version** | ${feedback.deviceInfo.osVersion} |\n`;
-		description += `| **Locale** | ${feedback.deviceInfo.locale} |\n\n`;
+		description += `| **Locale** | ${feedback.deviceInfo.locale} |\n`;
+
+		// Add tester info if available
+		if (feedback.testerInfo?.email) {
+			description += `| **Submitted By** | ${feedback.testerInfo.email} |\n`;
+		}
+		description += "\n";
 
 		if (isCrash && feedback.crashData) {
 			description += "### 🔍 Crash Details\n\n";
@@ -834,15 +852,18 @@ export class LinearClient {
 			}
 
 			if (feedback.screenshotData.images.length > 0) {
-				description += `**Screenshots:** ${feedback.screenshotData.images.length} attached`;
+				description += "### 📸 Screenshots\n\n";
 
-				// Add enhanced screenshot info if available
-				if (feedback.screenshotData.enhancedImages && feedback.screenshotData.enhancedImages.length > 0) {
-					const enhancedCount = feedback.screenshotData.enhancedImages.length;
-					description += ` (${enhancedCount} with enhanced metadata)`;
+				// Include uploaded screenshots as embedded images
+				if (screenshotUrls.length > 0) {
+					for (const screenshot of screenshotUrls) {
+						description += `**${screenshot.filename}:**\n`;
+						description += `![${screenshot.filename}](${screenshot.url})\n\n`;
+					}
+				} else {
+					// Fallback if no uploads succeeded - mention the count
+					description += `*${feedback.screenshotData.images.length} screenshot(s) were submitted but could not be uploaded.*\n\n`;
 				}
-
-				description += "\n\n";
 			}
 
 			if (
@@ -1000,6 +1021,120 @@ export class LinearClient {
 		}
 
 		return info + "\n";
+	}
+
+	/**
+	 * Uploads screenshots to Linear's file storage and returns the asset URLs
+	 */
+	public async uploadScreenshots(
+		feedback: ProcessedFeedbackData,
+	): Promise<{
+		uploaded: number;
+		failed: number;
+		urls: Array<{ filename: string; url: string }>;
+	}> {
+		const results = {
+			uploaded: 0,
+			failed: 0,
+			urls: [] as Array<{ filename: string; url: string }>,
+		};
+
+		if (!feedback.screenshotData?.images || feedback.screenshotData.images.length === 0) {
+			return results;
+		}
+
+		for (const imageInfo of feedback.screenshotData.images) {
+			try {
+				// Check if URL hasn't expired
+				if (imageInfo.expiresAt <= new Date()) {
+					console.warn(`Screenshot URL expired: ${imageInfo.url}`);
+					results.failed++;
+					continue;
+				}
+
+				// Download the screenshot from TestFlight's temporary URL
+				console.log(`📸 Downloading screenshot: ${imageInfo.fileName}`);
+				const response = await fetch(imageInfo.url, {
+					headers: { "User-Agent": "TestFlight-PM/1.0" },
+					signal: AbortSignal.timeout(30000),
+				});
+
+				if (!response.ok) {
+					console.warn(`Failed to download screenshot: ${response.status} ${response.statusText}`);
+					results.failed++;
+					continue;
+				}
+
+				const imageData = new Uint8Array(await response.arrayBuffer());
+				const contentType = this.getContentTypeFromFileName(imageInfo.fileName);
+
+				// Request upload URL from Linear
+				console.log(`📤 Requesting Linear upload URL for: ${imageInfo.fileName}`);
+				const uploadPayload = await this.sdk.fileUpload(
+					contentType,
+					imageInfo.fileName,
+					imageData.length,
+				);
+
+				if (!uploadPayload.success || !uploadPayload.uploadFile) {
+					console.warn(`Failed to get upload URL for ${imageInfo.fileName}`);
+					results.failed++;
+					continue;
+				}
+
+				const { uploadUrl, assetUrl, headers: uploadHeaders } = uploadPayload.uploadFile;
+
+				// Build headers for the upload request
+				const headers = new Headers();
+				headers.set("Content-Type", contentType);
+				headers.set("Cache-Control", "public, max-age=31536000");
+				for (const { key, value } of uploadHeaders) {
+					headers.set(key, value);
+				}
+
+				// Upload the file to Linear's storage
+				console.log(`⬆️ Uploading ${imageInfo.fileName} to Linear...`);
+				const uploadResponse = await fetch(uploadUrl, {
+					method: "PUT",
+					headers,
+					body: imageData,
+				});
+
+				if (!uploadResponse.ok) {
+					console.warn(`Failed to upload ${imageInfo.fileName}: ${uploadResponse.status}`);
+					results.failed++;
+					continue;
+				}
+
+				console.log(`✅ Successfully uploaded ${imageInfo.fileName}`);
+				results.uploaded++;
+				results.urls.push({ filename: imageInfo.fileName, url: assetUrl });
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error);
+				console.warn(`Error uploading screenshot ${imageInfo.fileName}: ${errorMessage}`);
+				results.failed++;
+			}
+		}
+
+		return results;
+	}
+
+	/**
+	 * Gets MIME content type from filename
+	 */
+	private getContentTypeFromFileName(fileName: string): string {
+		const extension = fileName.toLowerCase().split('.').pop();
+		switch (extension) {
+			case 'png':
+				return 'image/png';
+			case 'jpg':
+			case 'jpeg':
+				return 'image/jpeg';
+			case 'heic':
+				return 'image/heic';
+			default:
+				return 'image/png';
+		}
 	}
 }
 
