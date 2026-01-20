@@ -712,6 +712,8 @@ export class LinearClient {
 		},
 		screenshotUrls: Array<{ filename: string; url: string }> = [],
 	) {
+		console.log(`🔍 prepareIssueFromTestFlight called with screenshotUrls.length=${screenshotUrls.length}`);
+		console.log(`🔍 screenshotUrls contents: ${JSON.stringify(screenshotUrls)}`);
 		const isCrash = feedback.type === "crash";
 		const typeIcon = isCrash ? "💥" : "📱";
 		const typeLabel = isCrash ? "Crash Report" : "User Feedback";

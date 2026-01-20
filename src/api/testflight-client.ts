@@ -272,7 +272,7 @@ export class TestFlightClient {
 	}
 
 	/**
-	 * Downloads a single screenshot image with validation (Single Responsibility)
+	 * Downloads a single screenshot image with validation and retry logic for 5xx errors
 	 */
 	private async downloadSingleScreenshotImage(
 		imageInfo: { url: string; fileName: string; fileSize: number; expiresAt: Date },
@@ -283,30 +283,61 @@ export class TestFlightClient {
 			return null;
 		}
 
-		const response = await fetch(imageInfo.url, {
-			headers: {
-				"User-Agent": "TestFlight-PM/1.0",
-			},
-			signal: AbortSignal.timeout(this.defaultTimeout),
-		});
+		const maxRetries = 3;
+		let lastError: string | null = null;
 
-		if (!response.ok) {
-			console.warn(
-				`Failed to download screenshot: ${response.status} ${response.statusText}`,
-			);
-			return null;
+		for (let attempt = 1; attempt <= maxRetries; attempt++) {
+			try {
+				console.log(`📸 Downloading screenshot (attempt ${attempt}/${maxRetries}): ${imageInfo.fileName}`);
+
+				const response = await fetch(imageInfo.url, {
+					headers: {
+						"User-Agent": "TestFlight-PM/1.0",
+						"Accept": "image/*",
+					},
+					signal: AbortSignal.timeout(this.defaultTimeout),
+				});
+
+				if (response.ok) {
+					const imageData = new Uint8Array(await response.arrayBuffer());
+					console.log(`✅ Downloaded screenshot: ${imageInfo.fileName} (${imageData.length} bytes)`);
+
+					// Validate file size if specified
+					if (imageInfo.fileSize > 0 && imageData.length !== imageInfo.fileSize) {
+						console.warn(
+							`Screenshot size mismatch for ${imageInfo.fileName}: expected ${imageInfo.fileSize}, got ${imageData.length}`,
+						);
+					}
+
+					return imageData;
+				}
+
+				lastError = `${response.status} ${response.statusText}`;
+
+				// Retry on 5xx errors
+				if (response.status >= 500 && attempt < maxRetries) {
+					const delay = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
+					console.warn(`Screenshot download failed (${lastError}), retrying in ${delay/1000}s...`);
+					await new Promise(resolve => setTimeout(resolve, delay));
+					continue;
+				}
+
+				console.warn(`Failed to download screenshot: ${lastError}`);
+				return null;
+			} catch (error) {
+				lastError = error instanceof Error ? error.message : String(error);
+				if (attempt < maxRetries) {
+					const delay = Math.pow(2, attempt) * 1000;
+					console.warn(`Screenshot download error (${lastError}), retrying in ${delay/1000}s...`);
+					await new Promise(resolve => setTimeout(resolve, delay));
+					continue;
+				}
+				console.warn(`Failed to download screenshot after ${maxRetries} attempts: ${lastError}`);
+				return null;
+			}
 		}
 
-		const imageData = new Uint8Array(await response.arrayBuffer());
-
-		// Validate file size if specified
-		if (imageInfo.fileSize > 0 && imageData.length !== imageInfo.fileSize) {
-			console.warn(
-				`Screenshot size mismatch for ${imageInfo.fileName}: expected ${imageInfo.fileSize}, got ${imageData.length}`,
-			);
-		}
-
-		return imageData;
+		return null;
 	}
 
 	/**

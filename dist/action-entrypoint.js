@@ -46358,6 +46358,8 @@ class LinearClient {
     };
   }
   prepareIssueFromTestFlight(feedback, additionalLabels = [], assigneeId, projectId, options, screenshotUrls = []) {
+    console.log(`\uD83D\uDD0D prepareIssueFromTestFlight called with screenshotUrls.length=${screenshotUrls.length}`);
+    console.log(`\uD83D\uDD0D screenshotUrls contents: ${JSON.stringify(screenshotUrls)}`);
     const isCrash = feedback.type === "crash";
     const typeIcon = isCrash ? "\uD83D\uDCA5" : "\uD83D\uDCF1";
     const typeLabel = isCrash ? "Crash Report" : "User Feedback";
@@ -48486,21 +48488,48 @@ class TestFlightClient {
       console.warn(`Screenshot URL expired: ${imageInfo.url}`);
       return null;
     }
-    const response = await fetch(imageInfo.url, {
-      headers: {
-        "User-Agent": "TestFlight-PM/1.0"
-      },
-      signal: AbortSignal.timeout(this.defaultTimeout)
-    });
-    if (!response.ok) {
-      console.warn(`Failed to download screenshot: ${response.status} ${response.statusText}`);
-      return null;
+    const maxRetries = 3;
+    let lastError = null;
+    for (let attempt = 1;attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`\uD83D\uDCF8 Downloading screenshot (attempt ${attempt}/${maxRetries}): ${imageInfo.fileName}`);
+        const response = await fetch(imageInfo.url, {
+          headers: {
+            "User-Agent": "TestFlight-PM/1.0",
+            Accept: "image/*"
+          },
+          signal: AbortSignal.timeout(this.defaultTimeout)
+        });
+        if (response.ok) {
+          const imageData = new Uint8Array(await response.arrayBuffer());
+          console.log(`✅ Downloaded screenshot: ${imageInfo.fileName} (${imageData.length} bytes)`);
+          if (imageInfo.fileSize > 0 && imageData.length !== imageInfo.fileSize) {
+            console.warn(`Screenshot size mismatch for ${imageInfo.fileName}: expected ${imageInfo.fileSize}, got ${imageData.length}`);
+          }
+          return imageData;
+        }
+        lastError = `${response.status} ${response.statusText}`;
+        if (response.status >= 500 && attempt < maxRetries) {
+          const delay = Math.pow(2, attempt) * 1000;
+          console.warn(`Screenshot download failed (${lastError}), retrying in ${delay / 1000}s...`);
+          await new Promise((resolve2) => setTimeout(resolve2, delay));
+          continue;
+        }
+        console.warn(`Failed to download screenshot: ${lastError}`);
+        return null;
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+        if (attempt < maxRetries) {
+          const delay = Math.pow(2, attempt) * 1000;
+          console.warn(`Screenshot download error (${lastError}), retrying in ${delay / 1000}s...`);
+          await new Promise((resolve2) => setTimeout(resolve2, delay));
+          continue;
+        }
+        console.warn(`Failed to download screenshot after ${maxRetries} attempts: ${lastError}`);
+        return null;
+      }
     }
-    const imageData = new Uint8Array(await response.arrayBuffer());
-    if (imageInfo.fileSize > 0 && imageData.length !== imageInfo.fileSize) {
-      console.warn(`Screenshot size mismatch for ${imageInfo.fileName}: expected ${imageInfo.fileSize}, got ${imageData.length}`);
-    }
-    return imageData;
+    return null;
   }
   getRateLimitInfo() {
     return this.rateLimitInfo;
