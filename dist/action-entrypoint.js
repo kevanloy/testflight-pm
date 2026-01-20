@@ -28534,30 +28534,32 @@ ${feedback.crashData.trace}
       return [];
     }
     const attachments = [];
-    for (const imageInfo of feedback.screenshotData.images) {
+    for (let i = 0;i < feedback.screenshotData.images.length; i++) {
+      const imageInfo = feedback.screenshotData.images[i];
+      const fileName = imageInfo.fileName || `screenshot_${i}.png`;
       try {
         let imageData;
         if (imageInfo.cachedData) {
-          console.log(`\uD83D\uDCF8 Using cached screenshot: ${imageInfo.fileName}`);
+          console.log(`\uD83D\uDCF8 Using cached screenshot: ${fileName}`);
           imageData = imageInfo.cachedData;
         } else {
           imageData = await this.downloadSingleScreenshotImageData({
             url: imageInfo.url,
-            fileName: imageInfo.fileName,
+            fileName,
             fileSize: imageInfo.fileSize,
             expiresAt: imageInfo.expiresAt
           });
         }
         if (imageData) {
           attachments.push({
-            filename: imageInfo.fileName,
+            filename: fileName,
             content: imageData,
-            contentType: this.getContentTypeFromFileName(imageInfo.fileName),
+            contentType: this.getContentTypeFromFileName(fileName),
             size: imageData.length
           });
         }
       } catch (error) {
-        console.warn(`Failed to get screenshot ${imageInfo.fileName}:`, error);
+        console.warn(`Failed to get screenshot ${fileName}:`, error);
       }
     }
     return attachments;
@@ -28592,6 +28594,9 @@ ${feedback.crashData.trace}
     }
   }
   getContentTypeFromFileName(fileName) {
+    if (!fileName) {
+      return "image/png";
+    }
     const extension = fileName.toLowerCase().split(".").pop();
     switch (extension) {
       case "png":
@@ -46637,11 +46642,13 @@ ${feedback.crashData.trace}
     if (!feedback.screenshotData?.images || feedback.screenshotData.images.length === 0) {
       return results;
     }
-    for (const imageInfo of feedback.screenshotData.images) {
+    for (let i = 0;i < feedback.screenshotData.images.length; i++) {
+      const imageInfo = feedback.screenshotData.images[i];
+      const fileName = imageInfo.fileName || `screenshot_${i}.png`;
       try {
         let imageData;
         if (imageInfo.cachedData) {
-          console.log(`\uD83D\uDCF8 Using cached screenshot: ${imageInfo.fileName}`);
+          console.log(`\uD83D\uDCF8 Using cached screenshot: ${fileName}`);
           imageData = imageInfo.cachedData;
         } else {
           if (imageInfo.expiresAt <= new Date) {
@@ -46649,7 +46656,7 @@ ${feedback.crashData.trace}
             results.failed++;
             continue;
           }
-          console.log(`\uD83D\uDCF8 Downloading screenshot: ${imageInfo.fileName}`);
+          console.log(`\uD83D\uDCF8 Downloading screenshot: ${fileName}`);
           const response = await fetch(imageInfo.url, {
             headers: { "User-Agent": "TestFlight-PM/1.0" },
             signal: AbortSignal.timeout(30000)
@@ -46661,11 +46668,11 @@ ${feedback.crashData.trace}
           }
           imageData = new Uint8Array(await response.arrayBuffer());
         }
-        const contentType = this.getContentTypeFromFileName(imageInfo.fileName);
-        console.log(`\uD83D\uDCE4 Requesting Linear upload URL for: ${imageInfo.fileName}`);
-        const uploadPayload = await this.sdk.fileUpload(contentType, imageInfo.fileName, imageData.length);
+        const contentType = this.getContentTypeFromFileName(fileName);
+        console.log(`\uD83D\uDCE4 Requesting Linear upload URL for: ${fileName}`);
+        const uploadPayload = await this.sdk.fileUpload(contentType, fileName, imageData.length);
         if (!uploadPayload.success || !uploadPayload.uploadFile) {
-          console.warn(`Failed to get upload URL for ${imageInfo.fileName}`);
+          console.warn(`Failed to get upload URL for ${fileName}`);
           results.failed++;
           continue;
         }
@@ -46676,29 +46683,32 @@ ${feedback.crashData.trace}
         for (const { key, value } of uploadHeaders) {
           headers.set(key, value);
         }
-        console.log(`⬆️ Uploading ${imageInfo.fileName} to Linear...`);
+        console.log(`⬆️ Uploading ${fileName} to Linear...`);
         const uploadResponse = await fetch(uploadUrl, {
           method: "PUT",
           headers,
           body: imageData
         });
         if (!uploadResponse.ok) {
-          console.warn(`Failed to upload ${imageInfo.fileName}: ${uploadResponse.status}`);
+          console.warn(`Failed to upload ${fileName}: ${uploadResponse.status}`);
           results.failed++;
           continue;
         }
-        console.log(`✅ Successfully uploaded ${imageInfo.fileName}`);
+        console.log(`✅ Successfully uploaded ${fileName}`);
         results.uploaded++;
-        results.urls.push({ filename: imageInfo.fileName, url: assetUrl });
+        results.urls.push({ filename: fileName, url: assetUrl });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        console.warn(`Error uploading screenshot ${imageInfo.fileName}: ${errorMessage}`);
+        console.warn(`Error uploading screenshot ${fileName}: ${errorMessage}`);
         results.failed++;
       }
     }
     return results;
   }
   getContentTypeFromFileName(fileName) {
+    if (!fileName) {
+      return "image/png";
+    }
     const extension = fileName.toLowerCase().split(".").pop();
     switch (extension) {
       case "png":

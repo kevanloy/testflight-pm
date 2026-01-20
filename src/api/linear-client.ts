@@ -1043,13 +1043,17 @@ export class LinearClient {
 			return results;
 		}
 
-		for (const imageInfo of feedback.screenshotData.images) {
+		for (let i = 0; i < feedback.screenshotData.images.length; i++) {
+			const imageInfo = feedback.screenshotData.images[i];
+			// Generate fallback filename if missing
+			const fileName = imageInfo.fileName || `screenshot_${i}.png`;
+
 			try {
 				let imageData: Uint8Array;
 
 				// Use cached data if available (pre-downloaded to avoid URL expiration)
 				if (imageInfo.cachedData) {
-					console.log(`📸 Using cached screenshot: ${imageInfo.fileName}`);
+					console.log(`📸 Using cached screenshot: ${fileName}`);
 					imageData = imageInfo.cachedData;
 				} else {
 					// Fall back to downloading if not cached
@@ -1061,7 +1065,7 @@ export class LinearClient {
 					}
 
 					// Download the screenshot from TestFlight's temporary URL
-					console.log(`📸 Downloading screenshot: ${imageInfo.fileName}`);
+					console.log(`📸 Downloading screenshot: ${fileName}`);
 					const response = await fetch(imageInfo.url, {
 						headers: { "User-Agent": "TestFlight-PM/1.0" },
 						signal: AbortSignal.timeout(30000),
@@ -1076,18 +1080,18 @@ export class LinearClient {
 					imageData = new Uint8Array(await response.arrayBuffer());
 				}
 
-				const contentType = this.getContentTypeFromFileName(imageInfo.fileName);
+				const contentType = this.getContentTypeFromFileName(fileName);
 
 				// Request upload URL from Linear
-				console.log(`📤 Requesting Linear upload URL for: ${imageInfo.fileName}`);
+				console.log(`📤 Requesting Linear upload URL for: ${fileName}`);
 				const uploadPayload = await this.sdk.fileUpload(
 					contentType,
-					imageInfo.fileName,
+					fileName,
 					imageData.length,
 				);
 
 				if (!uploadPayload.success || !uploadPayload.uploadFile) {
-					console.warn(`Failed to get upload URL for ${imageInfo.fileName}`);
+					console.warn(`Failed to get upload URL for ${fileName}`);
 					results.failed++;
 					continue;
 				}
@@ -1103,7 +1107,7 @@ export class LinearClient {
 				}
 
 				// Upload the file to Linear's storage
-				console.log(`⬆️ Uploading ${imageInfo.fileName} to Linear...`);
+				console.log(`⬆️ Uploading ${fileName} to Linear...`);
 				const uploadResponse = await fetch(uploadUrl, {
 					method: "PUT",
 					headers,
@@ -1111,17 +1115,17 @@ export class LinearClient {
 				});
 
 				if (!uploadResponse.ok) {
-					console.warn(`Failed to upload ${imageInfo.fileName}: ${uploadResponse.status}`);
+					console.warn(`Failed to upload ${fileName}: ${uploadResponse.status}`);
 					results.failed++;
 					continue;
 				}
 
-				console.log(`✅ Successfully uploaded ${imageInfo.fileName}`);
+				console.log(`✅ Successfully uploaded ${fileName}`);
 				results.uploaded++;
-				results.urls.push({ filename: imageInfo.fileName, url: assetUrl });
+				results.urls.push({ filename: fileName, url: assetUrl });
 			} catch (error) {
 				const errorMessage = error instanceof Error ? error.message : String(error);
-				console.warn(`Error uploading screenshot ${imageInfo.fileName}: ${errorMessage}`);
+				console.warn(`Error uploading screenshot ${fileName}: ${errorMessage}`);
 				results.failed++;
 			}
 		}
@@ -1132,7 +1136,10 @@ export class LinearClient {
 	/**
 	 * Gets MIME content type from filename
 	 */
-	private getContentTypeFromFileName(fileName: string): string {
+	private getContentTypeFromFileName(fileName?: string): string {
+		if (!fileName) {
+			return 'image/png';
+		}
 		const extension = fileName.toLowerCase().split('.').pop();
 		switch (extension) {
 			case 'png':

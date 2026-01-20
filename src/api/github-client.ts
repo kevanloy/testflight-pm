@@ -1206,19 +1206,23 @@ export class GitHubClient {
 		const attachments: GitHubScreenshotUpload[] = [];
 
 		// Process screenshots - prefer cached data over downloading
-		for (const imageInfo of feedback.screenshotData.images) {
+		for (let i = 0; i < feedback.screenshotData.images.length; i++) {
+			const imageInfo = feedback.screenshotData.images[i];
+			// Generate fallback filename if missing
+			const fileName = imageInfo.fileName || `screenshot_${i}.png`;
+
 			try {
 				let imageData: Uint8Array | null;
 
 				// Use cached data if available (pre-downloaded to avoid URL expiration)
 				if (imageInfo.cachedData) {
-					console.log(`📸 Using cached screenshot: ${imageInfo.fileName}`);
+					console.log(`📸 Using cached screenshot: ${fileName}`);
 					imageData = imageInfo.cachedData;
 				} else {
 					// Fall back to downloading if not cached
 					imageData = await this.downloadSingleScreenshotImageData({
 						url: imageInfo.url,
-						fileName: imageInfo.fileName,
+						fileName: fileName,
 						fileSize: imageInfo.fileSize,
 						expiresAt: imageInfo.expiresAt,
 					});
@@ -1226,14 +1230,14 @@ export class GitHubClient {
 
 				if (imageData) {
 					attachments.push({
-						filename: imageInfo.fileName,
+						filename: fileName,
 						content: imageData,
-						contentType: this.getContentTypeFromFileName(imageInfo.fileName),
+						contentType: this.getContentTypeFromFileName(fileName),
 						size: imageData.length,
 					});
 				}
 			} catch (error) {
-				console.warn(`Failed to get screenshot ${imageInfo.fileName}:`, error);
+				console.warn(`Failed to get screenshot ${fileName}:`, error);
 			}
 		}
 
@@ -1288,7 +1292,10 @@ export class GitHubClient {
 	/**
 	 * Gets MIME content type from filename
 	 */
-	private getContentTypeFromFileName(fileName: string): string {
+	private getContentTypeFromFileName(fileName?: string): string {
+		if (!fileName) {
+			return 'image/png';
+		}
 		const extension = fileName.toLowerCase().split('.').pop();
 		switch (extension) {
 			case 'png':
