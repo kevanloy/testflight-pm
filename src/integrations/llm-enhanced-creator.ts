@@ -136,15 +136,13 @@ export class LLMEnhancedIssueCreator {
 				`Starting enhanced issue creation for feedback ${feedback.id}`,
 			);
 
-			// Validate configuration
+			// Validate configuration - if invalid, proceed without LLM enhancement
+			// This ensures screenshots still get embedded even if LLM config is missing
 			const configValid = this.validateConfiguration(options, result);
 			if (!configValid) {
-				return await this.fallbackToStandardCreation(
-					feedback,
-					options,
-					result,
-					"Configuration validation failed",
-				);
+				console.log(`LLM configuration invalid, proceeding without LLM enhancement`);
+				result.warnings.push("LLM configuration invalid, proceeding without enhancement");
+				options.enableLLMEnhancement = false;
 			}
 
 			// Build enhancement context
