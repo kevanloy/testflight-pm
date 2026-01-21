@@ -503,7 +503,7 @@ async function processFeedbackItem(
 				enableCodebaseAnalysis: !!codebaseAnalyzer,
 				analysisDepth: "moderate",
 				includeRecentChanges: true,
-				fallbackToStandard: true,
+				fallbackToStandard: false, // Disabled to prevent duplicate issues from standard path
 				skipDuplicateDetection: !enableDuplicateDetection,
 				dryRun: isDryRun,
 			});
