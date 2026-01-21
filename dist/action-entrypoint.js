@@ -26740,15 +26740,15 @@ function loadLLMConfig() {
   if (fallbackProviders) {
     config.fallbackProviders = fallbackProviders.split(",").map((p) => p.trim());
   }
-  const openaiKey = getEnvVar2(LLM_ENV_VARS.OPENAI_API_KEY);
+  const openaiKey = getEnvVar2(LLM_ENV_VARS.OPENAI_API_KEY, "openai-api-key");
   if (openaiKey) {
     config.providers.openai.apiKey = openaiKey;
   }
-  const anthropicKey = getEnvVar2(LLM_ENV_VARS.ANTHROPIC_API_KEY);
+  const anthropicKey = getEnvVar2(LLM_ENV_VARS.ANTHROPIC_API_KEY, "anthropic-api-key");
   if (anthropicKey) {
     config.providers.anthropic.apiKey = anthropicKey;
   }
-  const googleKey = getEnvVar2(LLM_ENV_VARS.GOOGLE_API_KEY);
+  const googleKey = getEnvVar2(LLM_ENV_VARS.GOOGLE_API_KEY, "google-api-key");
   if (googleKey) {
     config.providers.google.apiKey = googleKey;
   }
@@ -27726,959 +27726,6 @@ var init_llm_client = __esm(() => {
   init_dist();
   init_llm_config();
   init_defaults();
-});
-
-// src/api/app-store-connect-auth.ts
-class AppStoreConnectAuth {
-  currentToken = null;
-  tokenLifetimeMinutes = 20;
-  refreshThresholdMinutes = 2;
-  async getValidToken() {
-    try {
-      if (this.isTokenValid() && this.currentToken) {
-        return this.currentToken.token;
-      }
-      return await this.generateNewToken();
-    } catch (error) {
-      throw new Error(`Failed to get valid authentication token: ${error}`);
-    }
-  }
-  async refreshToken() {
-    this.currentToken = null;
-    return await this.generateNewToken();
-  }
-  isTokenValid() {
-    if (!this.currentToken) {
-      return false;
-    }
-    const now = new Date;
-    const refreshThreshold = new Date(this.currentToken.expiresAt.getTime() - this.refreshThresholdMinutes * 60 * 1000);
-    return now < refreshThreshold;
-  }
-  async generateNewToken() {
-    try {
-      const config = getConfiguration();
-      const { issuerId, keyId, privateKey } = config.appStoreConnect;
-      const now = Math.floor(Date.now() / 1000);
-      const exp = now + this.tokenLifetimeMinutes * 60;
-      const payload = {
-        iss: issuerId,
-        iat: now,
-        exp,
-        aud: "appstoreconnect-v1"
-      };
-      const token = await this.signJwt(payload, privateKey, keyId);
-      this.currentToken = {
-        token,
-        issuedAt: new Date(now * 1000),
-        expiresAt: new Date(exp * 1000)
-      };
-      return token;
-    } catch (error) {
-      throw new Error(`Failed to generate JWT token: ${error}`);
-    }
-  }
-  async signJwt(payload, privateKey, keyId) {
-    try {
-      const header = {
-        alg: "ES256",
-        kid: keyId,
-        typ: "JWT"
-      };
-      const encodedHeader = this.base64UrlEncode(JSON.stringify(header));
-      const encodedPayload = this.base64UrlEncode(JSON.stringify(payload));
-      const message = `${encodedHeader}.${encodedPayload}`;
-      const key = await crypto.subtle.importKey("pkcs8", this.pemToArrayBuffer(privateKey), {
-        name: "ECDSA",
-        namedCurve: "P-256"
-      }, false, ["sign"]);
-      const signature = await crypto.subtle.sign({
-        name: "ECDSA",
-        hash: "SHA-256"
-      }, key, new TextEncoder().encode(message));
-      const encodedSignature = this.base64UrlEncode(new Uint8Array(signature));
-      return `${message}.${encodedSignature}`;
-    } catch (error) {
-      throw new Error(`Failed to sign JWT: ${error}`);
-    }
-  }
-  pemToArrayBuffer(pem) {
-    try {
-      const pemHeader = "-----BEGIN PRIVATE KEY-----";
-      const pemFooter = "-----END PRIVATE KEY-----";
-      const pemContents = pem.replace(pemHeader, "").replace(pemFooter, "").replace(/\s+/g, "");
-      const binaryString = atob(pemContents);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0;i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      return bytes.buffer;
-    } catch (error) {
-      throw new Error(`Failed to parse private key: ${error}`);
-    }
-  }
-  base64UrlEncode(data) {
-    let base64;
-    if (typeof data === "string") {
-      base64 = btoa(unescape(encodeURIComponent(data)));
-    } else {
-      base64 = btoa(String.fromCharCode.apply(null, Array.from(data)));
-    }
-    return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-  }
-  clearToken() {
-    this.currentToken = null;
-  }
-  getTokenInfo() {
-    if (!this.currentToken) {
-      return { isValid: false };
-    }
-    return {
-      isValid: this.isTokenValid(),
-      expiresAt: this.currentToken.expiresAt,
-      issuedAt: this.currentToken.issuedAt
-    };
-  }
-}
-function getAuthInstance() {
-  if (!_authInstance) {
-    _authInstance = new AppStoreConnectAuth;
-  }
-  return _authInstance;
-}
-var _authInstance = null;
-var init_app_store_connect_auth = __esm(() => {
-  init_config();
-});
-
-// src/api/testflight-client.ts
-class TestFlightClient {
-  baseUrl = API_ENDPOINTS.APP_STORE_CONNECT;
-  defaultTimeout = DEFAULT_HTTP_CONFIG.timeout;
-  defaultRetries = DEFAULT_HTTP_CONFIG.retries;
-  defaultRetryDelay = DEFAULT_HTTP_CONFIG.retryDelay;
-  appId;
-  rateLimitInfo = null;
-  constructor() {
-    const { getConfiguration: getConfiguration2 } = (init_config(), __toCommonJS(exports_config));
-    const config = getConfiguration2();
-    this.appId = config.appStoreConnect.appId || null;
-  }
-  async getScreenshotFeedback(params) {
-    if (!this.appId) {
-      throw new Error("App ID is required. Use getAppScreenshotFeedback with explicit app ID instead.");
-    }
-    return this.getAppScreenshotFeedback(this.appId, params);
-  }
-  async getAppScreenshotSubmissions(appId, params) {
-    const queryParams = {
-      limit: DEFAULT_TESTFLIGHT_CONFIG.DEFAULT_LIMIT,
-      sort: DEFAULT_TESTFLIGHT_CONFIG.DEFAULT_SORT,
-      ...params
-    };
-    const response = await this.makeApiRequest(`/apps/${appId}/betaFeedbackScreenshotSubmissions`, queryParams);
-    return response.data;
-  }
-  async getAppScreenshotSubmissionsWithDateFilter(appId, since) {
-    const allRecentScreenshots = await this.getAppScreenshotSubmissions(appId, {
-      limit: DEFAULT_TESTFLIGHT_CONFIG.MAX_LIMIT,
-      sort: "-createdDate"
-    });
-    const filteredScreenshots = allRecentScreenshots.filter((screenshot) => {
-      const createdDate = new Date(screenshot.attributes.createdDate || screenshot.attributes.submittedAt || 0);
-      return createdDate >= since;
-    });
-    console.log(`✅ Fetched ${allRecentScreenshots.length} screenshot submissions, ${filteredScreenshots.length} match date filter (since ${since.toISOString()})`);
-    return filteredScreenshots;
-  }
-  async getDetailedScreenshotSubmission(screenshotId, params) {
-    const response = await this.makeApiRequest(`/betaFeedbackScreenshotSubmissions/${screenshotId}`, params);
-    return response.data;
-  }
-  async deleteFeedbackSubmission(feedbackId) {
-    try {
-      console.log(`\uD83D\uDDD1️ Deleting feedback submission: ${feedbackId}`);
-      await this.makeDeleteRequest(`/betaFeedbackScreenshotSubmissions/${feedbackId}`);
-      console.log(`✅ Successfully deleted feedback: ${feedbackId}`);
-      return true;
-    } catch (error) {
-      console.error(`❌ Failed to delete feedback ${feedbackId}:`, error);
-      return false;
-    }
-  }
-  async makeDeleteRequest(endpoint) {
-    const auth = getAuthInstance();
-    const token = await auth.getValidToken();
-    const url = `${this.baseUrl}${endpoint}`;
-    const response = await fetch(url, {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      signal: AbortSignal.timeout(this.defaultTimeout)
-    });
-    this.updateRateLimitInfo(response);
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`DELETE ${endpoint} failed: ${response.status} - ${errorBody}`);
-    }
-  }
-  async getAppScreenshotFeedback(appId, params) {
-    return this.getAppScreenshotSubmissions(appId, params);
-  }
-  async downloadCrashLogs(crashReport) {
-    const logs = [];
-    const { crashLogs } = crashReport.attributes;
-    if (!crashLogs || crashLogs.length === 0) {
-      return logs;
-    }
-    for (const logInfo of crashLogs) {
-      try {
-        const expiresAt = new Date(logInfo.expiresAt);
-        if (expiresAt <= new Date) {
-          console.warn(`Crash log URL expired: ${logInfo.url}`);
-          continue;
-        }
-        const response = await fetch(logInfo.url, {
-          headers: {
-            "User-Agent": "TestFlight-PM/1.0"
-          },
-          signal: AbortSignal.timeout(this.defaultTimeout)
-        });
-        if (!response.ok) {
-          console.warn(`Failed to download crash log: ${response.status} ${response.statusText}`);
-          continue;
-        }
-        const logContent = await response.text();
-        logs.push(logContent);
-      } catch (error) {
-        console.warn(`Error downloading crash log from ${logInfo.url}:`, error);
-      }
-    }
-    return logs;
-  }
-  async downloadScreenshots(screenshotFeedback) {
-    const { screenshots } = screenshotFeedback.attributes;
-    return await this.downloadScreenshotImages(screenshots);
-  }
-  async downloadEnhancedScreenshots(screenshotFeedback) {
-    const results = [];
-    const enhancedImages = await this.processEnhancedScreenshotImages(screenshotFeedback.attributes.screenshots);
-    for (const imageMetadata of enhancedImages) {
-      try {
-        const imageData = await this.downloadSingleScreenshotImage(imageMetadata);
-        if (imageData) {
-          results.push({
-            data: imageData,
-            metadata: imageMetadata
-          });
-        }
-      } catch (error) {
-        console.warn(`Error downloading enhanced screenshot ${imageMetadata.fileName}:`, error);
-      }
-    }
-    return results;
-  }
-  async downloadScreenshotImages(screenshots) {
-    const images = [];
-    for (const imageInfo of screenshots) {
-      try {
-        const imageData = await this.downloadSingleScreenshotImage({
-          url: imageInfo.url,
-          fileName: imageInfo.fileName,
-          fileSize: imageInfo.fileSize,
-          expiresAt: new Date(imageInfo.expiresAt)
-        });
-        if (imageData) {
-          images.push(imageData);
-        }
-      } catch (error) {
-        console.warn(`Error downloading screenshot from ${imageInfo.url}:`, error);
-      }
-    }
-    return images;
-  }
-  async downloadSingleScreenshotImage(imageInfo) {
-    if (imageInfo.expiresAt <= new Date) {
-      console.warn(`Screenshot URL expired: ${imageInfo.url}`);
-      return null;
-    }
-    const maxRetries = 3;
-    let lastError = null;
-    for (let attempt = 1;attempt <= maxRetries; attempt++) {
-      try {
-        console.log(`\uD83D\uDCF8 Downloading screenshot (attempt ${attempt}/${maxRetries}): ${imageInfo.fileName}`);
-        const response = await fetch(imageInfo.url, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Cache-Control": "no-cache"
-          },
-          signal: AbortSignal.timeout(this.defaultTimeout)
-        });
-        if (response.ok) {
-          const imageData = new Uint8Array(await response.arrayBuffer());
-          console.log(`✅ Downloaded screenshot: ${imageInfo.fileName} (${imageData.length} bytes)`);
-          if (imageInfo.fileSize > 0 && imageData.length !== imageInfo.fileSize) {
-            console.warn(`Screenshot size mismatch for ${imageInfo.fileName}: expected ${imageInfo.fileSize}, got ${imageData.length}`);
-          }
-          return imageData;
-        }
-        lastError = `${response.status} ${response.statusText}`;
-        if (response.status >= 500 && attempt < maxRetries) {
-          const delay = Math.pow(2, attempt) * 1000;
-          console.warn(`Screenshot download failed (${lastError}), retrying in ${delay / 1000}s...`);
-          await new Promise((resolve2) => setTimeout(resolve2, delay));
-          continue;
-        }
-        console.warn(`Failed to download screenshot: ${lastError}`);
-        return null;
-      } catch (error) {
-        lastError = error instanceof Error ? error.message : String(error);
-        if (attempt < maxRetries) {
-          const delay = Math.pow(2, attempt) * 1000;
-          console.warn(`Screenshot download error (${lastError}), retrying in ${delay / 1000}s...`);
-          await new Promise((resolve2) => setTimeout(resolve2, delay));
-          continue;
-        }
-        console.warn(`Failed to download screenshot after ${maxRetries} attempts: ${lastError}`);
-        return null;
-      }
-    }
-    return null;
-  }
-  getRateLimitInfo() {
-    return this.rateLimitInfo;
-  }
-  getConfiguredAppId() {
-    return this.appId || null;
-  }
-  async testAuthentication() {
-    try {
-      const authInstance = getAuthInstance();
-      await authInstance.getValidToken();
-      return true;
-    } catch {
-      return false;
-    }
-  }
-  async getApps(params) {
-    const queryParams = {
-      limit: DEFAULT_TESTFLIGHT_CONFIG.DEFAULT_LIMIT,
-      ...params
-    };
-    const response = await this.makeApiRequest("/apps", queryParams);
-    return response.data;
-  }
-  async findAppByBundleId(bundleId) {
-    console.log(`\uD83D\uDD0D Searching for app with bundle ID: ${bundleId}`);
-    try {
-      const params = {
-        filter: {
-          bundleId
-        },
-        limit: 1
-      };
-      console.log(`\uD83D\uDD04 Attempting filtered search first...`);
-      const filteredApps = await this.getApps(params);
-      if (filteredApps.length > 0 && filteredApps[0]) {
-        console.log(`✅ Filtered search successful: ${filteredApps[0].attributes.name}`);
-        return filteredApps[0];
-      }
-      console.log(`⚠️ Filtered search returned no results, falling back to manual search`);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.log(`⚠️ Filtered search failed (${errorMessage}), falling back to manual search`);
-    }
-    console.log(`\uD83D\uDD04 Performing manual search across all apps...`);
-    try {
-      const allApps = await this.getApps({ limit: 200 });
-      console.log(`\uD83D\uDCCB Searching through ${allApps.length} apps for bundle ID: ${bundleId}`);
-      const matchingApp = allApps.find((app) => app.attributes.bundleId === bundleId);
-      if (matchingApp) {
-        console.log(`✅ Manual search successful: ${matchingApp.attributes.name} (${matchingApp.id})`);
-        return matchingApp;
-      }
-      console.log(`❌ No app found with bundle ID: ${bundleId}`);
-      console.log(`\uD83D\uDCCB Available apps:`);
-      allApps.forEach((app) => {
-        console.log(`  - ${app.attributes.name}: ${app.attributes.bundleId} (${app.id})`);
-      });
-      return null;
-    } catch (fallbackError) {
-      const fallbackErrorMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-      console.error(`❌ Manual search also failed: ${fallbackErrorMessage}`);
-      throw fallbackError;
-    }
-  }
-  async getAppById(appId) {
-    const response = await this.makeApiRequest(`/apps/${appId}`, {
-      fields: {
-        apps: "bundleId,name,sku,primaryLocale"
-      }
-    });
-    return response.data;
-  }
-  async getAppCrashSubmissions(appId, params) {
-    const queryParams = {
-      limit: DEFAULT_TESTFLIGHT_CONFIG.DEFAULT_LIMIT,
-      sort: DEFAULT_TESTFLIGHT_CONFIG.DEFAULT_SORT,
-      ...params
-    };
-    const response = await this.makeApiRequest(`/apps/${appId}/betaFeedbackCrashSubmissions`, queryParams);
-    return response.data;
-  }
-  async getAppCrashSubmissionsWithDateFilter(appId, since) {
-    const allRecentCrashes = await this.getAppCrashSubmissions(appId, {
-      limit: DEFAULT_TESTFLIGHT_CONFIG.MAX_LIMIT,
-      sort: "-createdDate"
-    });
-    const filteredCrashes = allRecentCrashes.filter((crash) => {
-      const createdDate = new Date(crash.attributes.createdDate || crash.attributes.submittedAt || 0);
-      return createdDate >= since;
-    });
-    console.log(`✅ Fetched ${allRecentCrashes.length} crash submissions, ${filteredCrashes.length} match date filter (since ${since.toISOString()})`);
-    return filteredCrashes;
-  }
-  async getDetailedCrashSubmission(crashId, params) {
-    const response = await this.makeApiRequest(`/betaFeedbackCrashSubmissions/${crashId}`, params);
-    return response.data;
-  }
-  async getCrashLog(crashId) {
-    const response = await this.makeApiRequest(`/betaFeedbackCrashSubmissions/${crashId}/crashLog`, {
-      fields: {
-        betaCrashLogs: "logText"
-      }
-    });
-    return response.data;
-  }
-  async getCrashLogRelationships(crashId) {
-    return await this.makeApiRequest(`/betaFeedbackCrashSubmissions/${crashId}/relationships/crashLog`);
-  }
-  getCrashLogText(crashLog) {
-    if (!crashLog.attributes?.logText) {
-      console.warn(`Crash log text not available for crash log ${crashLog.id}`);
-      return null;
-    }
-    return crashLog.attributes.logText;
-  }
-  async resolveAppId(bundleId) {
-    const providedAppId = this.appId;
-    const providedBundleId = bundleId;
-    if (providedAppId && providedBundleId) {
-      console.log(`\uD83D\uDD0D Validating consistency between app_id: ${providedAppId} and bundle_id: ${providedBundleId}`);
-      try {
-        const appFromBundleId = await this.findAppByBundleId(providedBundleId);
-        if (!appFromBundleId) {
-          throw new Error(`Bundle ID '${providedBundleId}' not found in App Store Connect. Please verify the bundle ID is correct and exists.`);
-        }
-        if (appFromBundleId.id !== providedAppId) {
-          console.warn(`⚠️ Inconsistency detected! Provided app_id: ${providedAppId} does not match API app_id: ${appFromBundleId.id} for bundle_id: ${providedBundleId}`);
-          console.warn(`\uD83D\uDCCB App Store Connect API shows: ${appFromBundleId.attributes.name} (${appFromBundleId.attributes.bundleId})`);
-          console.warn(`\uD83D\uDD27 Using App Store Connect API as authoritative source: ${appFromBundleId.id}`);
-          return appFromBundleId.id;
-        }
-        console.log(`✅ Validated consistency: app_id ${providedAppId} matches bundle_id ${providedBundleId}`);
-        return providedAppId;
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        console.warn(`⚠️ Bundle ID validation failed: ${errorMessage}`);
-        console.log(`\uD83D\uDD0D Attempting to validate app_id: ${providedAppId} directly`);
-        try {
-          const appFromAppId = await this.getAppById(providedAppId);
-          if (appFromAppId.attributes.bundleId !== providedBundleId) {
-            throw new Error(`Inconsistent data: app_id '${providedAppId}' has bundle_id '${appFromAppId.attributes.bundleId}' but you provided bundle_id '${providedBundleId}'. Please check your configuration.`);
-          }
-          console.log(`✅ Validated app_id ${providedAppId} exists and matches expected bundle_id`);
-          return providedAppId;
-        } catch (appIdError) {
-          const appIdErrorMessage = appIdError instanceof Error ? appIdError.message : String(appIdError);
-          throw new Error(`App validation failed - neither app_id '${providedAppId}' nor bundle_id '${providedBundleId}' could be validated. Bundle ID Error: ${errorMessage}; App ID Error: ${appIdErrorMessage}`);
-        }
-      }
-    }
-    if (providedAppId && !providedBundleId) {
-      console.log(`\uD83D\uDD0D Validating app_id: ${providedAppId}`);
-      try {
-        const app = await this.getAppById(providedAppId);
-        console.log(`✅ Validated app_id ${providedAppId} - ${app.attributes.name} (${app.attributes.bundleId})`);
-        return providedAppId;
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        throw new Error(`App ID '${providedAppId}' not found in App Store Connect. Error: ${errorMessage}`);
-      }
-    }
-    if (!providedAppId && providedBundleId) {
-      console.log(`\uD83D\uDD0D Resolving app_id from bundle_id: ${providedBundleId}`);
-      try {
-        const app = await this.findAppByBundleId(providedBundleId);
-        if (!app) {
-          throw new Error(`No app found with bundle ID '${providedBundleId}' in your App Store Connect account.`);
-        }
-        console.log(`✅ Resolved app_id ${app.id} from bundle_id ${providedBundleId} - ${app.attributes.name}`);
-        return app.id;
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        throw new Error(`Failed to resolve app_id from bundle_id '${providedBundleId}'. Error: ${errorMessage}`);
-      }
-    }
-    throw new Error("Either app_id or testflight_bundle_id must be provided. Please set TESTFLIGHT_APP_ID or TESTFLIGHT_BUNDLE_ID environment variables, or provide app_id or testflight_bundle_id inputs.");
-  }
-  async getEnhancedRecentFeedback(since, bundleId) {
-    const resolvedAppId = await this.resolveAppId(bundleId);
-    const [crashes, screenshots] = await Promise.all([
-      this.getAppCrashSubmissionsWithDateFilter(resolvedAppId, since),
-      this.getAppScreenshotSubmissionsWithDateFilter(resolvedAppId, since)
-    ]);
-    const processedData = [];
-    await this.processCrashReportsWithDetails(crashes, processedData);
-    await this.processScreenshotFeedbackData(screenshots, processedData);
-    processedData.sort((a, b) => b.submittedAt.getTime() - a.submittedAt.getTime());
-    return processedData;
-  }
-  async getRecentFeedback(since) {
-    return this.getEnhancedRecentFeedback(since);
-  }
-  async makeApiRequest(endpoint, params, options) {
-    const {
-      retries = this.defaultRetries,
-      retryDelay = this.defaultRetryDelay,
-      timeout = this.defaultTimeout
-    } = options || {};
-    let lastError = null;
-    let lastStatusCode = null;
-    for (let attempt = 0;attempt <= retries; attempt++) {
-      try {
-        await this.waitForRateLimit();
-        const authInstance = getAuthInstance();
-        const token = await authInstance.getValidToken();
-        const url = this.buildUrl(endpoint, params);
-        console.log(`\uD83D\uDD17 API Request (attempt ${attempt + 1}/${retries + 1}): ${url.toString()}`);
-        const response = await fetch(url, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/json",
-            "User-Agent": "TestFlight-PM/1.0"
-          },
-          signal: AbortSignal.timeout(timeout)
-        });
-        lastStatusCode = response.status;
-        this.updateRateLimitInfo(response);
-        if (!response.ok) {
-          const errorText = await response.text();
-          let errorData;
-          try {
-            errorData = JSON.parse(errorText);
-          } catch {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-          }
-          const errorMessage = errorData.errors.map((e) => `${e.title}: ${e.detail}`).join("; ");
-          const apiError = new Error(`API Error: ${errorMessage}`);
-          const isRetryable = this.isRetryableError(response.status, errorMessage);
-          if (!isRetryable) {
-            console.log(`❌ Non-retryable error (${response.status}): ${errorMessage}`);
-            throw apiError;
-          }
-          console.log(`⚠️ Retryable error (${response.status}): ${errorMessage}`);
-          throw apiError;
-        }
-        const data = await response.json();
-        console.log(`✅ API Request successful (attempt ${attempt + 1})`);
-        return data;
-      } catch (error) {
-        lastError = error;
-        if (lastError.message.includes("authentication") || lastError.message.includes("unauthorized") || lastStatusCode === 401 || lastStatusCode === 403) {
-          console.log(`❌ Authentication error - not retrying: ${lastError.message}`);
-          throw lastError;
-        }
-        if (lastStatusCode && lastStatusCode >= 400 && lastStatusCode < 500 && lastStatusCode !== 429) {
-          console.log(`❌ Client error (${lastStatusCode}) - not retrying: ${lastError.message}`);
-          throw lastError;
-        }
-        if (attempt === retries) {
-          console.log(`❌ Final attempt failed: ${lastError.message}`);
-          break;
-        }
-        const baseDelay = retryDelay * Math.pow(2, attempt);
-        const jitter = Math.random() * 0.1 * baseDelay;
-        const delay = Math.floor(baseDelay + jitter);
-        console.log(`\uD83D\uDD04 Retrying in ${delay}ms (attempt ${attempt + 1}/${retries + 1}): ${lastError.message}`);
-        await this.sleep(delay);
-      }
-    }
-    const finalError = new Error(`Request failed after ${retries + 1} attempts: ${lastError?.message}${lastStatusCode ? ` (HTTP ${lastStatusCode})` : ""}`);
-    if (lastStatusCode === 404 || lastError?.message.includes("The specified resource does not exist")) {
-      console.error(`\uD83D\uDD0D This appears to be a resource not found error. Check your app_id/bundle_id and API key permissions.`);
-    }
-    throw finalError;
-  }
-  isRetryableError(statusCode, errorMessage) {
-    if (statusCode === 429) {
-      return true;
-    }
-    if (statusCode >= 500) {
-      return true;
-    }
-    if (errorMessage.includes("timeout") || errorMessage.includes("network")) {
-      return true;
-    }
-    if (errorMessage.includes("temporarily unavailable") || errorMessage.includes("service unavailable")) {
-      return true;
-    }
-    if (statusCode >= 400 && statusCode < 500) {
-      return false;
-    }
-    return false;
-  }
-  buildUrl(endpoint, params) {
-    let fullUrl;
-    if (endpoint.startsWith("/")) {
-      fullUrl = this.baseUrl.endsWith("/") ? this.baseUrl + endpoint.slice(1) : this.baseUrl + endpoint;
-    } else {
-      fullUrl = new URL(endpoint, this.baseUrl).toString();
-    }
-    const url = new URL(fullUrl);
-    if (params) {
-      if (params.limit) {
-        url.searchParams.set("limit", params.limit.toString());
-      }
-      if (params.sort) {
-        url.searchParams.set("sort", params.sort);
-      }
-      if (params.include) {
-        url.searchParams.set("include", params.include);
-      }
-      if (params.filter) {
-        for (const [key, value] of Object.entries(params.filter)) {
-          url.searchParams.set(`filter[${key}]`, value);
-        }
-      }
-      if (params.fields) {
-        for (const [key, value] of Object.entries(params.fields)) {
-          url.searchParams.set(`fields[${key}]`, value);
-        }
-      }
-    }
-    return url.toString();
-  }
-  updateRateLimitInfo(response) {
-    const remaining = response.headers.get("X-RateLimit-Remaining");
-    const reset = response.headers.get("X-RateLimit-Reset");
-    const limit = response.headers.get("X-RateLimit-Limit");
-    if (remaining && reset && limit) {
-      this.rateLimitInfo = {
-        remaining: Number.parseInt(remaining, 10),
-        reset: new Date(Number.parseInt(reset, 10) * 1000),
-        limit: Number.parseInt(limit, 10)
-      };
-    }
-  }
-  async waitForRateLimit() {
-    if (!this.rateLimitInfo) {
-      return;
-    }
-    if (this.rateLimitInfo.remaining <= 5) {
-      const now = new Date;
-      const waitTime = this.rateLimitInfo.reset.getTime() - now.getTime();
-      if (waitTime > 0) {
-        console.log(`Rate limit approaching. Waiting ${Math.ceil(waitTime / 1000)} seconds...`);
-        await this.sleep(waitTime);
-      }
-    }
-  }
-  async processCrashReportsWithDetails(crashes, processedData) {
-    for (const crash of crashes) {
-      let processedCrash = this.processCrashReport(crash);
-      try {
-        console.log(`\uD83D\uDD0D Fetching enhanced crash metadata for ${crash.id}`);
-        const detailedCrash = await this.getDetailedCrashSubmission(crash.id, {
-          include: "build,tester",
-          fields: {
-            betaFeedbackCrashSubmissions: [
-              "createdDate",
-              "comment",
-              "email",
-              "deviceModel",
-              "osVersion",
-              "locale",
-              "timeZone",
-              "architecture",
-              "connectionType",
-              "pairedAppleWatch",
-              "appUptimeInMilliseconds",
-              "diskBytesAvailable",
-              "diskBytesTotal",
-              "batteryPercentage",
-              "screenWidthInPoints",
-              "screenHeightInPoints",
-              "appPlatform",
-              "devicePlatform",
-              "deviceFamily",
-              "buildBundleId"
-            ].join(",")
-          }
-        });
-        processedCrash = this.mergeEnhancedCrashMetadata(processedCrash, detailedCrash);
-        console.log(`✅ Enhanced crash metadata obtained for ${crash.id}`);
-      } catch (error) {
-        console.warn(`⚠️ Failed to get enhanced crash metadata for ${crash.id}:`, error);
-      }
-      try {
-        const crashLog = await this.getCrashLog(crash.id);
-        const logText = this.getCrashLogText(crashLog);
-        if (logText && processedCrash.crashData) {
-          processedCrash.crashData.detailedLogs = [logText];
-        }
-      } catch (error) {
-        console.warn(`Failed to get detailed crash log for ${crash.id}:`, error);
-      }
-      processedData.push(processedCrash);
-    }
-  }
-  async processScreenshotFeedbackData(screenshots, processedData) {
-    for (const screenshot of screenshots) {
-      const processedScreenshot = this.processScreenshotFeedback(screenshot);
-      try {
-        console.log(`\uD83D\uDD0D Fetching enhanced screenshot metadata for ${screenshot.id}`);
-        const detailedScreenshot = await this.getDetailedScreenshotSubmission(screenshot.id, {
-          include: "build,tester",
-          fields: {
-            betaFeedbackScreenshotSubmissions: [
-              "createdDate",
-              "comment",
-              "email",
-              "deviceModel",
-              "osVersion",
-              "locale",
-              "timeZone",
-              "architecture",
-              "connectionType",
-              "pairedAppleWatch",
-              "appUptimeInMilliseconds",
-              "diskBytesAvailable",
-              "diskBytesTotal",
-              "batteryPercentage",
-              "screenWidthInPoints",
-              "screenHeightInPoints",
-              "appPlatform",
-              "devicePlatform",
-              "deviceFamily",
-              "buildBundleId",
-              "screenshots"
-            ].join(",")
-          }
-        });
-        if (processedScreenshot.screenshotData) {
-          const screenshotsFromAPI = detailedScreenshot.attributes.screenshots;
-          console.log(`\uD83D\uDD0D DEBUG: screenshots from API for ${screenshot.id}:`, JSON.stringify(screenshotsFromAPI, null, 2));
-          if (screenshotsFromAPI && screenshotsFromAPI.length > 0) {
-            processedScreenshot.screenshotData.images = screenshotsFromAPI.map((img, index) => {
-              const processedImg = {
-                url: img?.url || "",
-                fileName: img?.fileName || `screenshot_${index}.png`,
-                fileSize: img?.fileSize || 0,
-                expiresAt: new Date(img?.expiresAt || Date.now() + 3600000)
-              };
-              console.log(`\uD83D\uDD0D DEBUG: Processed image ${index}:`, JSON.stringify(processedImg, null, 2));
-              return processedImg;
-            });
-            processedScreenshot.screenshotData.enhancedImages = await this.processEnhancedScreenshotImages(screenshotsFromAPI);
-            console.log(`\uD83D\uDCF7 Found ${processedScreenshot.screenshotData.images.length} screenshot(s) from detailed API for ${screenshot.id}`);
-          } else {
-            console.warn(`⚠️ No screenshots in detailed API response for ${screenshot.id}`);
-          }
-        }
-        console.log(`✅ Enhanced screenshot metadata obtained for ${screenshot.id}`);
-      } catch (error) {
-        console.warn(`⚠️ Failed to get enhanced screenshot metadata for ${screenshot.id}:`, error);
-      }
-      if (processedScreenshot.screenshotData?.images && processedScreenshot.screenshotData.images.length > 0) {
-        console.log(`\uD83D\uDCF8 Pre-downloading ${processedScreenshot.screenshotData.images.length} screenshot(s) for ${screenshot.id}...`);
-        for (const imageInfo of processedScreenshot.screenshotData.images) {
-          try {
-            const imageData = await this.downloadSingleScreenshotImage(imageInfo);
-            if (imageData) {
-              imageInfo.cachedData = imageData;
-              console.log(`✅ Cached screenshot: ${imageInfo.fileName} (${imageData.length} bytes)`);
-            }
-          } catch (error) {
-            console.warn(`⚠️ Failed to pre-download screenshot ${imageInfo.fileName}:`, error);
-          }
-        }
-      } else {
-        console.warn(`⚠️ No screenshots available to download for ${screenshot.id}`);
-      }
-      processedData.push(processedScreenshot);
-    }
-  }
-  async processEnhancedScreenshotImages(screenshots) {
-    if (!screenshots || !Array.isArray(screenshots)) {
-      return [];
-    }
-    return screenshots.map((screenshot, index) => ({
-      url: screenshot?.url || "",
-      fileName: screenshot?.fileName || `screenshot_${index}.png`,
-      fileSize: screenshot?.fileSize || 0,
-      expiresAt: screenshot?.expiresAt ? new Date(screenshot.expiresAt) : new Date,
-      imageFormat: this.extractImageFormat(screenshot?.fileName),
-      imageScale: 1,
-      imageDimensions: {
-        width: 0,
-        height: 0
-      },
-      compressionQuality: 0.8,
-      metadata: {
-        index,
-        processingTime: new Date().toISOString()
-      }
-    }));
-  }
-  extractImageFormat(fileName) {
-    if (!fileName) {
-      return "png";
-    }
-    const extension = fileName.toLowerCase().split(".").pop();
-    switch (extension) {
-      case "png":
-        return "png";
-      case "jpg":
-      case "jpeg":
-        return "jpeg";
-      case "heic":
-        return "heic";
-      default:
-        return "png";
-    }
-  }
-  processCrashReport(crash) {
-    const attrs = crash.attributes;
-    const submittedAt = attrs.createdDate || attrs.submittedAt || new Date().toISOString();
-    const bundleId = attrs.buildBundleId || attrs.bundleId || "";
-    const deviceFamily = attrs.deviceFamily || "UNKNOWN";
-    const appVersion = attrs.appVersion || "Unknown";
-    const buildNumber = attrs.buildNumber || "Unknown";
-    return {
-      id: crash.id,
-      type: "crash",
-      submittedAt: new Date(submittedAt),
-      appVersion,
-      buildNumber,
-      deviceInfo: {
-        family: deviceFamily,
-        model: attrs.deviceModel,
-        osVersion: attrs.osVersion,
-        locale: attrs.locale
-      },
-      bundleId,
-      testerInfo: attrs.email ? {
-        email: attrs.email
-      } : undefined,
-      crashData: {
-        trace: attrs.crashTrace || "",
-        type: attrs.crashType || "Unknown",
-        exceptionType: attrs.exceptionType,
-        exceptionMessage: attrs.exceptionMessage,
-        logs: attrs.crashLogs?.map((log) => ({
-          url: log.url,
-          expiresAt: new Date(log.expiresAt)
-        })) || []
-      }
-    };
-  }
-  processScreenshotFeedback(screenshot) {
-    const attrs = screenshot.attributes;
-    const submittedAt = attrs.createdDate || attrs.submittedAt || new Date().toISOString();
-    const bundleId = attrs.buildBundleId || attrs.bundleId || "";
-    const deviceFamily = attrs.deviceFamily || "UNKNOWN";
-    const feedbackText = attrs.comment || attrs.feedbackText || "";
-    const appVersion = attrs.appVersion || "Unknown";
-    const buildNumber = attrs.buildNumber || "Unknown";
-    return {
-      id: screenshot.id,
-      type: "screenshot",
-      submittedAt: new Date(submittedAt),
-      appVersion,
-      buildNumber,
-      deviceInfo: {
-        family: deviceFamily,
-        model: attrs.deviceModel,
-        osVersion: attrs.osVersion,
-        locale: attrs.locale
-      },
-      bundleId,
-      testerInfo: attrs.email ? {
-        email: attrs.email
-      } : undefined,
-      screenshotData: {
-        text: feedbackText,
-        images: (attrs.screenshots || []).map((img, index) => ({
-          url: img.url,
-          fileName: img.fileName || `screenshot_${index}.png`,
-          fileSize: img.fileSize || 0,
-          expiresAt: new Date(img.expiresAt || Date.now() + 3600000)
-        })),
-        annotations: attrs.annotations || []
-      }
-    };
-  }
-  mergeEnhancedCrashMetadata(processedCrash, detailedCrash) {
-    if (!processedCrash.crashData) {
-      return processedCrash;
-    }
-    const attrs = detailedCrash.attributes;
-    const enhancedCrashData = {
-      ...processedCrash.crashData,
-      systemInfo: {
-        batteryPercentage: attrs.batteryPercentage,
-        appUptimeInMilliseconds: attrs.appUptimeInMilliseconds,
-        connectionType: attrs.connectionType,
-        diskBytesAvailable: attrs.diskBytesAvailable,
-        diskBytesTotal: attrs.diskBytesTotal,
-        architecture: attrs.architecture,
-        pairedAppleWatch: attrs.pairedAppleWatch,
-        screenDimensions: {
-          width: attrs.screenWidthInPoints,
-          height: attrs.screenHeightInPoints
-        },
-        diskSpaceRemainingGB: attrs.diskBytesAvailable ? Math.round(attrs.diskBytesAvailable / 1024 ** 3 * 10) / 10 : null,
-        appUptimeFormatted: attrs.appUptimeInMilliseconds ? this.formatUptime(attrs.appUptimeInMilliseconds) : null
-      }
-    };
-    return {
-      ...processedCrash,
-      crashData: enhancedCrashData
-    };
-  }
-  formatUptime(uptimeMs) {
-    const seconds = Math.floor(uptimeMs / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-    if (days > 0)
-      return `${days}d ${hours % 24}h ${minutes % 60}m`;
-    if (hours > 0)
-      return `${hours}h ${minutes % 60}m`;
-    if (minutes > 0)
-      return `${minutes}m ${seconds % 60}s`;
-    return `${seconds}s`;
-  }
-  sleep(ms) {
-    return new Promise((resolve2) => setTimeout(resolve2, ms));
-  }
-}
-function getTestFlightClient() {
-  if (!_clientInstance) {
-    _clientInstance = new TestFlightClient;
-  }
-  return _clientInstance;
-}
-var _clientInstance = null;
-var init_testflight_client = __esm(() => {
-  init_config();
-  init_app_store_connect_auth();
 });
 
 // src/api/github-client.ts
@@ -48704,7 +47751,6 @@ class LLMEnhancedIssueCreator {
   codebaseAnalyzer = getCodebaseAnalyzer();
   githubClient = getGitHubClient();
   linearClient = getLinearClient();
-  testFlightClient = getTestFlightClient();
   idempotencyService = getIdempotencyService();
   stateManager = getStateManager();
   async createEnhancedIssue(feedback, options) {
@@ -48749,15 +47795,6 @@ class LLMEnhancedIssueCreator {
       }
       if (!options.dryRun && result.platform.length > 0) {
         await this.stateManager.markAsProcessed([feedback.id], options.actionRunId);
-        if (result.linear?.issue) {
-          console.log(`\uD83D\uDDD1️ Deleting feedback from App Store Connect after successful Linear issue creation...`);
-          const deleted = await this.testFlightClient.deleteFeedbackSubmission(feedback.id);
-          if (deleted) {
-            console.log(`✅ Feedback ${feedback.id} deleted from App Store Connect`);
-          } else {
-            console.warn(`⚠️ Failed to delete feedback ${feedback.id} from App Store Connect`);
-          }
-        }
       }
       result.success = result.platform.length > 0;
       result.processingTime = Date.now() - startTime;
@@ -49252,7 +48289,6 @@ var init_llm_enhanced_creator = __esm(() => {
   init_codebase_analyzer();
   init_github_client();
   init_linear_client();
-  init_testflight_client();
   init_llm_client();
   init_llm_config();
   init_idempotency_service();
@@ -49262,17 +48298,968 @@ var init_llm_enhanced_creator = __esm(() => {
 // action-entrypoint.ts
 init_codebase_analyzer();
 init_llm_client();
-init_testflight_client();
+var core2 = __toESM(require_core(), 1);
+
+// src/api/testflight-client.ts
+init_config();
+
+// src/api/app-store-connect-auth.ts
+init_config();
+
+class AppStoreConnectAuth {
+  currentToken = null;
+  tokenLifetimeMinutes = 20;
+  refreshThresholdMinutes = 2;
+  async getValidToken() {
+    try {
+      if (this.isTokenValid() && this.currentToken) {
+        return this.currentToken.token;
+      }
+      return await this.generateNewToken();
+    } catch (error) {
+      throw new Error(`Failed to get valid authentication token: ${error}`);
+    }
+  }
+  async refreshToken() {
+    this.currentToken = null;
+    return await this.generateNewToken();
+  }
+  isTokenValid() {
+    if (!this.currentToken) {
+      return false;
+    }
+    const now = new Date;
+    const refreshThreshold = new Date(this.currentToken.expiresAt.getTime() - this.refreshThresholdMinutes * 60 * 1000);
+    return now < refreshThreshold;
+  }
+  async generateNewToken() {
+    try {
+      const config = getConfiguration();
+      const { issuerId, keyId, privateKey } = config.appStoreConnect;
+      const now = Math.floor(Date.now() / 1000);
+      const exp = now + this.tokenLifetimeMinutes * 60;
+      const payload = {
+        iss: issuerId,
+        iat: now,
+        exp,
+        aud: "appstoreconnect-v1"
+      };
+      const token = await this.signJwt(payload, privateKey, keyId);
+      this.currentToken = {
+        token,
+        issuedAt: new Date(now * 1000),
+        expiresAt: new Date(exp * 1000)
+      };
+      return token;
+    } catch (error) {
+      throw new Error(`Failed to generate JWT token: ${error}`);
+    }
+  }
+  async signJwt(payload, privateKey, keyId) {
+    try {
+      const header = {
+        alg: "ES256",
+        kid: keyId,
+        typ: "JWT"
+      };
+      const encodedHeader = this.base64UrlEncode(JSON.stringify(header));
+      const encodedPayload = this.base64UrlEncode(JSON.stringify(payload));
+      const message = `${encodedHeader}.${encodedPayload}`;
+      const key = await crypto.subtle.importKey("pkcs8", this.pemToArrayBuffer(privateKey), {
+        name: "ECDSA",
+        namedCurve: "P-256"
+      }, false, ["sign"]);
+      const signature = await crypto.subtle.sign({
+        name: "ECDSA",
+        hash: "SHA-256"
+      }, key, new TextEncoder().encode(message));
+      const encodedSignature = this.base64UrlEncode(new Uint8Array(signature));
+      return `${message}.${encodedSignature}`;
+    } catch (error) {
+      throw new Error(`Failed to sign JWT: ${error}`);
+    }
+  }
+  pemToArrayBuffer(pem) {
+    try {
+      const pemHeader = "-----BEGIN PRIVATE KEY-----";
+      const pemFooter = "-----END PRIVATE KEY-----";
+      const pemContents = pem.replace(pemHeader, "").replace(pemFooter, "").replace(/\s+/g, "");
+      const binaryString = atob(pemContents);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0;i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return bytes.buffer;
+    } catch (error) {
+      throw new Error(`Failed to parse private key: ${error}`);
+    }
+  }
+  base64UrlEncode(data) {
+    let base64;
+    if (typeof data === "string") {
+      base64 = btoa(unescape(encodeURIComponent(data)));
+    } else {
+      base64 = btoa(String.fromCharCode.apply(null, Array.from(data)));
+    }
+    return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+  }
+  clearToken() {
+    this.currentToken = null;
+  }
+  getTokenInfo() {
+    if (!this.currentToken) {
+      return { isValid: false };
+    }
+    return {
+      isValid: this.isTokenValid(),
+      expiresAt: this.currentToken.expiresAt,
+      issuedAt: this.currentToken.issuedAt
+    };
+  }
+}
+var _authInstance = null;
+function getAuthInstance() {
+  if (!_authInstance) {
+    _authInstance = new AppStoreConnectAuth;
+  }
+  return _authInstance;
+}
+
+// src/api/testflight-client.ts
+class TestFlightClient {
+  baseUrl = API_ENDPOINTS.APP_STORE_CONNECT;
+  defaultTimeout = DEFAULT_HTTP_CONFIG.timeout;
+  defaultRetries = DEFAULT_HTTP_CONFIG.retries;
+  defaultRetryDelay = DEFAULT_HTTP_CONFIG.retryDelay;
+  appId;
+  rateLimitInfo = null;
+  constructor() {
+    const { getConfiguration: getConfiguration2 } = (init_config(), __toCommonJS(exports_config));
+    const config = getConfiguration2();
+    this.appId = config.appStoreConnect.appId || null;
+  }
+  async getScreenshotFeedback(params) {
+    if (!this.appId) {
+      throw new Error("App ID is required. Use getAppScreenshotFeedback with explicit app ID instead.");
+    }
+    return this.getAppScreenshotFeedback(this.appId, params);
+  }
+  async getAppScreenshotSubmissions(appId, params) {
+    const queryParams = {
+      limit: DEFAULT_TESTFLIGHT_CONFIG.DEFAULT_LIMIT,
+      sort: DEFAULT_TESTFLIGHT_CONFIG.DEFAULT_SORT,
+      ...params
+    };
+    const response = await this.makeApiRequest(`/apps/${appId}/betaFeedbackScreenshotSubmissions`, queryParams);
+    return response.data;
+  }
+  async getAppScreenshotSubmissionsWithDateFilter(appId, since) {
+    const allRecentScreenshots = await this.getAppScreenshotSubmissions(appId, {
+      limit: DEFAULT_TESTFLIGHT_CONFIG.MAX_LIMIT,
+      sort: "-createdDate"
+    });
+    const filteredScreenshots = allRecentScreenshots.filter((screenshot) => {
+      const createdDate = new Date(screenshot.attributes.createdDate || screenshot.attributes.submittedAt || 0);
+      return createdDate >= since;
+    });
+    console.log(`✅ Fetched ${allRecentScreenshots.length} screenshot submissions, ${filteredScreenshots.length} match date filter (since ${since.toISOString()})`);
+    return filteredScreenshots;
+  }
+  async getDetailedScreenshotSubmission(screenshotId, params) {
+    const response = await this.makeApiRequest(`/betaFeedbackScreenshotSubmissions/${screenshotId}`, params);
+    return response.data;
+  }
+  async deleteFeedbackSubmission(feedbackId) {
+    try {
+      console.log(`\uD83D\uDDD1️ Deleting feedback submission: ${feedbackId}`);
+      await this.makeDeleteRequest(`/betaFeedbackScreenshotSubmissions/${feedbackId}`);
+      console.log(`✅ Successfully deleted feedback: ${feedbackId}`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Failed to delete feedback ${feedbackId}:`, error);
+      return false;
+    }
+  }
+  async makeDeleteRequest(endpoint) {
+    const auth = getAuthInstance();
+    const token = await auth.getValidToken();
+    const url = `${this.baseUrl}${endpoint}`;
+    const response = await fetch(url, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      signal: AbortSignal.timeout(this.defaultTimeout)
+    });
+    this.updateRateLimitInfo(response);
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`DELETE ${endpoint} failed: ${response.status} - ${errorBody}`);
+    }
+  }
+  async getAppScreenshotFeedback(appId, params) {
+    return this.getAppScreenshotSubmissions(appId, params);
+  }
+  async downloadCrashLogs(crashReport) {
+    const logs = [];
+    const { crashLogs } = crashReport.attributes;
+    if (!crashLogs || crashLogs.length === 0) {
+      return logs;
+    }
+    for (const logInfo of crashLogs) {
+      try {
+        const expiresAt = new Date(logInfo.expiresAt);
+        if (expiresAt <= new Date) {
+          console.warn(`Crash log URL expired: ${logInfo.url}`);
+          continue;
+        }
+        const response = await fetch(logInfo.url, {
+          headers: {
+            "User-Agent": "TestFlight-PM/1.0"
+          },
+          signal: AbortSignal.timeout(this.defaultTimeout)
+        });
+        if (!response.ok) {
+          console.warn(`Failed to download crash log: ${response.status} ${response.statusText}`);
+          continue;
+        }
+        const logContent = await response.text();
+        logs.push(logContent);
+      } catch (error) {
+        console.warn(`Error downloading crash log from ${logInfo.url}:`, error);
+      }
+    }
+    return logs;
+  }
+  async downloadScreenshots(screenshotFeedback) {
+    const { screenshots } = screenshotFeedback.attributes;
+    return await this.downloadScreenshotImages(screenshots);
+  }
+  async downloadEnhancedScreenshots(screenshotFeedback) {
+    const results = [];
+    const enhancedImages = await this.processEnhancedScreenshotImages(screenshotFeedback.attributes.screenshots);
+    for (const imageMetadata of enhancedImages) {
+      try {
+        const imageData = await this.downloadSingleScreenshotImage(imageMetadata);
+        if (imageData) {
+          results.push({
+            data: imageData,
+            metadata: imageMetadata
+          });
+        }
+      } catch (error) {
+        console.warn(`Error downloading enhanced screenshot ${imageMetadata.fileName}:`, error);
+      }
+    }
+    return results;
+  }
+  async downloadScreenshotImages(screenshots) {
+    const images = [];
+    for (const imageInfo of screenshots) {
+      try {
+        const imageData = await this.downloadSingleScreenshotImage({
+          url: imageInfo.url,
+          fileName: imageInfo.fileName,
+          fileSize: imageInfo.fileSize,
+          expiresAt: new Date(imageInfo.expiresAt)
+        });
+        if (imageData) {
+          images.push(imageData);
+        }
+      } catch (error) {
+        console.warn(`Error downloading screenshot from ${imageInfo.url}:`, error);
+      }
+    }
+    return images;
+  }
+  async downloadSingleScreenshotImage(imageInfo) {
+    if (imageInfo.expiresAt <= new Date) {
+      console.warn(`Screenshot URL expired: ${imageInfo.url}`);
+      return null;
+    }
+    const maxRetries = 3;
+    let lastError = null;
+    for (let attempt = 1;attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`\uD83D\uDCF8 Downloading screenshot (attempt ${attempt}/${maxRetries}): ${imageInfo.fileName}`);
+        const response = await fetch(imageInfo.url, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Cache-Control": "no-cache"
+          },
+          signal: AbortSignal.timeout(this.defaultTimeout)
+        });
+        if (response.ok) {
+          const imageData = new Uint8Array(await response.arrayBuffer());
+          console.log(`✅ Downloaded screenshot: ${imageInfo.fileName} (${imageData.length} bytes)`);
+          if (imageInfo.fileSize > 0 && imageData.length !== imageInfo.fileSize) {
+            console.warn(`Screenshot size mismatch for ${imageInfo.fileName}: expected ${imageInfo.fileSize}, got ${imageData.length}`);
+          }
+          return imageData;
+        }
+        lastError = `${response.status} ${response.statusText}`;
+        if (response.status >= 500 && attempt < maxRetries) {
+          const delay = Math.pow(2, attempt) * 1000;
+          console.warn(`Screenshot download failed (${lastError}), retrying in ${delay / 1000}s...`);
+          await new Promise((resolve2) => setTimeout(resolve2, delay));
+          continue;
+        }
+        console.warn(`Failed to download screenshot: ${lastError}`);
+        return null;
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+        if (attempt < maxRetries) {
+          const delay = Math.pow(2, attempt) * 1000;
+          console.warn(`Screenshot download error (${lastError}), retrying in ${delay / 1000}s...`);
+          await new Promise((resolve2) => setTimeout(resolve2, delay));
+          continue;
+        }
+        console.warn(`Failed to download screenshot after ${maxRetries} attempts: ${lastError}`);
+        return null;
+      }
+    }
+    return null;
+  }
+  getRateLimitInfo() {
+    return this.rateLimitInfo;
+  }
+  getConfiguredAppId() {
+    return this.appId || null;
+  }
+  async testAuthentication() {
+    try {
+      const authInstance = getAuthInstance();
+      await authInstance.getValidToken();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  async getApps(params) {
+    const queryParams = {
+      limit: DEFAULT_TESTFLIGHT_CONFIG.DEFAULT_LIMIT,
+      ...params
+    };
+    const response = await this.makeApiRequest("/apps", queryParams);
+    return response.data;
+  }
+  async findAppByBundleId(bundleId) {
+    console.log(`\uD83D\uDD0D Searching for app with bundle ID: ${bundleId}`);
+    try {
+      const params = {
+        filter: {
+          bundleId
+        },
+        limit: 1
+      };
+      console.log(`\uD83D\uDD04 Attempting filtered search first...`);
+      const filteredApps = await this.getApps(params);
+      if (filteredApps.length > 0 && filteredApps[0]) {
+        console.log(`✅ Filtered search successful: ${filteredApps[0].attributes.name}`);
+        return filteredApps[0];
+      }
+      console.log(`⚠️ Filtered search returned no results, falling back to manual search`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.log(`⚠️ Filtered search failed (${errorMessage}), falling back to manual search`);
+    }
+    console.log(`\uD83D\uDD04 Performing manual search across all apps...`);
+    try {
+      const allApps = await this.getApps({ limit: 200 });
+      console.log(`\uD83D\uDCCB Searching through ${allApps.length} apps for bundle ID: ${bundleId}`);
+      const matchingApp = allApps.find((app) => app.attributes.bundleId === bundleId);
+      if (matchingApp) {
+        console.log(`✅ Manual search successful: ${matchingApp.attributes.name} (${matchingApp.id})`);
+        return matchingApp;
+      }
+      console.log(`❌ No app found with bundle ID: ${bundleId}`);
+      console.log(`\uD83D\uDCCB Available apps:`);
+      allApps.forEach((app) => {
+        console.log(`  - ${app.attributes.name}: ${app.attributes.bundleId} (${app.id})`);
+      });
+      return null;
+    } catch (fallbackError) {
+      const fallbackErrorMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      console.error(`❌ Manual search also failed: ${fallbackErrorMessage}`);
+      throw fallbackError;
+    }
+  }
+  async getAppById(appId) {
+    const response = await this.makeApiRequest(`/apps/${appId}`, {
+      fields: {
+        apps: "bundleId,name,sku,primaryLocale"
+      }
+    });
+    return response.data;
+  }
+  async getAppCrashSubmissions(appId, params) {
+    const queryParams = {
+      limit: DEFAULT_TESTFLIGHT_CONFIG.DEFAULT_LIMIT,
+      sort: DEFAULT_TESTFLIGHT_CONFIG.DEFAULT_SORT,
+      ...params
+    };
+    const response = await this.makeApiRequest(`/apps/${appId}/betaFeedbackCrashSubmissions`, queryParams);
+    return response.data;
+  }
+  async getAppCrashSubmissionsWithDateFilter(appId, since) {
+    const allRecentCrashes = await this.getAppCrashSubmissions(appId, {
+      limit: DEFAULT_TESTFLIGHT_CONFIG.MAX_LIMIT,
+      sort: "-createdDate"
+    });
+    const filteredCrashes = allRecentCrashes.filter((crash) => {
+      const createdDate = new Date(crash.attributes.createdDate || crash.attributes.submittedAt || 0);
+      return createdDate >= since;
+    });
+    console.log(`✅ Fetched ${allRecentCrashes.length} crash submissions, ${filteredCrashes.length} match date filter (since ${since.toISOString()})`);
+    return filteredCrashes;
+  }
+  async getDetailedCrashSubmission(crashId, params) {
+    const response = await this.makeApiRequest(`/betaFeedbackCrashSubmissions/${crashId}`, params);
+    return response.data;
+  }
+  async getCrashLog(crashId) {
+    const response = await this.makeApiRequest(`/betaFeedbackCrashSubmissions/${crashId}/crashLog`, {
+      fields: {
+        betaCrashLogs: "logText"
+      }
+    });
+    return response.data;
+  }
+  async getCrashLogRelationships(crashId) {
+    return await this.makeApiRequest(`/betaFeedbackCrashSubmissions/${crashId}/relationships/crashLog`);
+  }
+  getCrashLogText(crashLog) {
+    if (!crashLog.attributes?.logText) {
+      console.warn(`Crash log text not available for crash log ${crashLog.id}`);
+      return null;
+    }
+    return crashLog.attributes.logText;
+  }
+  async resolveAppId(bundleId) {
+    const providedAppId = this.appId;
+    const providedBundleId = bundleId;
+    if (providedAppId && providedBundleId) {
+      console.log(`\uD83D\uDD0D Validating consistency between app_id: ${providedAppId} and bundle_id: ${providedBundleId}`);
+      try {
+        const appFromBundleId = await this.findAppByBundleId(providedBundleId);
+        if (!appFromBundleId) {
+          throw new Error(`Bundle ID '${providedBundleId}' not found in App Store Connect. Please verify the bundle ID is correct and exists.`);
+        }
+        if (appFromBundleId.id !== providedAppId) {
+          console.warn(`⚠️ Inconsistency detected! Provided app_id: ${providedAppId} does not match API app_id: ${appFromBundleId.id} for bundle_id: ${providedBundleId}`);
+          console.warn(`\uD83D\uDCCB App Store Connect API shows: ${appFromBundleId.attributes.name} (${appFromBundleId.attributes.bundleId})`);
+          console.warn(`\uD83D\uDD27 Using App Store Connect API as authoritative source: ${appFromBundleId.id}`);
+          return appFromBundleId.id;
+        }
+        console.log(`✅ Validated consistency: app_id ${providedAppId} matches bundle_id ${providedBundleId}`);
+        return providedAppId;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.warn(`⚠️ Bundle ID validation failed: ${errorMessage}`);
+        console.log(`\uD83D\uDD0D Attempting to validate app_id: ${providedAppId} directly`);
+        try {
+          const appFromAppId = await this.getAppById(providedAppId);
+          if (appFromAppId.attributes.bundleId !== providedBundleId) {
+            throw new Error(`Inconsistent data: app_id '${providedAppId}' has bundle_id '${appFromAppId.attributes.bundleId}' but you provided bundle_id '${providedBundleId}'. Please check your configuration.`);
+          }
+          console.log(`✅ Validated app_id ${providedAppId} exists and matches expected bundle_id`);
+          return providedAppId;
+        } catch (appIdError) {
+          const appIdErrorMessage = appIdError instanceof Error ? appIdError.message : String(appIdError);
+          throw new Error(`App validation failed - neither app_id '${providedAppId}' nor bundle_id '${providedBundleId}' could be validated. Bundle ID Error: ${errorMessage}; App ID Error: ${appIdErrorMessage}`);
+        }
+      }
+    }
+    if (providedAppId && !providedBundleId) {
+      console.log(`\uD83D\uDD0D Validating app_id: ${providedAppId}`);
+      try {
+        const app = await this.getAppById(providedAppId);
+        console.log(`✅ Validated app_id ${providedAppId} - ${app.attributes.name} (${app.attributes.bundleId})`);
+        return providedAppId;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        throw new Error(`App ID '${providedAppId}' not found in App Store Connect. Error: ${errorMessage}`);
+      }
+    }
+    if (!providedAppId && providedBundleId) {
+      console.log(`\uD83D\uDD0D Resolving app_id from bundle_id: ${providedBundleId}`);
+      try {
+        const app = await this.findAppByBundleId(providedBundleId);
+        if (!app) {
+          throw new Error(`No app found with bundle ID '${providedBundleId}' in your App Store Connect account.`);
+        }
+        console.log(`✅ Resolved app_id ${app.id} from bundle_id ${providedBundleId} - ${app.attributes.name}`);
+        return app.id;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to resolve app_id from bundle_id '${providedBundleId}'. Error: ${errorMessage}`);
+      }
+    }
+    throw new Error("Either app_id or testflight_bundle_id must be provided. Please set TESTFLIGHT_APP_ID or TESTFLIGHT_BUNDLE_ID environment variables, or provide app_id or testflight_bundle_id inputs.");
+  }
+  async getEnhancedRecentFeedback(since, bundleId) {
+    const resolvedAppId = await this.resolveAppId(bundleId);
+    const [crashes, screenshots] = await Promise.all([
+      this.getAppCrashSubmissionsWithDateFilter(resolvedAppId, since),
+      this.getAppScreenshotSubmissionsWithDateFilter(resolvedAppId, since)
+    ]);
+    const processedData = [];
+    await this.processCrashReportsWithDetails(crashes, processedData);
+    await this.processScreenshotFeedbackData(screenshots, processedData);
+    processedData.sort((a, b) => b.submittedAt.getTime() - a.submittedAt.getTime());
+    return processedData;
+  }
+  async getRecentFeedback(since) {
+    return this.getEnhancedRecentFeedback(since);
+  }
+  async makeApiRequest(endpoint, params, options) {
+    const {
+      retries = this.defaultRetries,
+      retryDelay = this.defaultRetryDelay,
+      timeout = this.defaultTimeout
+    } = options || {};
+    let lastError = null;
+    let lastStatusCode = null;
+    for (let attempt = 0;attempt <= retries; attempt++) {
+      try {
+        await this.waitForRateLimit();
+        const authInstance = getAuthInstance();
+        const token = await authInstance.getValidToken();
+        const url = this.buildUrl(endpoint, params);
+        console.log(`\uD83D\uDD17 API Request (attempt ${attempt + 1}/${retries + 1}): ${url.toString()}`);
+        const response = await fetch(url, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+            "User-Agent": "TestFlight-PM/1.0"
+          },
+          signal: AbortSignal.timeout(timeout)
+        });
+        lastStatusCode = response.status;
+        this.updateRateLimitInfo(response);
+        if (!response.ok) {
+          const errorText = await response.text();
+          let errorData;
+          try {
+            errorData = JSON.parse(errorText);
+          } catch {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          const errorMessage = errorData.errors.map((e) => `${e.title}: ${e.detail}`).join("; ");
+          const apiError = new Error(`API Error: ${errorMessage}`);
+          const isRetryable = this.isRetryableError(response.status, errorMessage);
+          if (!isRetryable) {
+            console.log(`❌ Non-retryable error (${response.status}): ${errorMessage}`);
+            throw apiError;
+          }
+          console.log(`⚠️ Retryable error (${response.status}): ${errorMessage}`);
+          throw apiError;
+        }
+        const data = await response.json();
+        console.log(`✅ API Request successful (attempt ${attempt + 1})`);
+        return data;
+      } catch (error) {
+        lastError = error;
+        if (lastError.message.includes("authentication") || lastError.message.includes("unauthorized") || lastStatusCode === 401 || lastStatusCode === 403) {
+          console.log(`❌ Authentication error - not retrying: ${lastError.message}`);
+          throw lastError;
+        }
+        if (lastStatusCode && lastStatusCode >= 400 && lastStatusCode < 500 && lastStatusCode !== 429) {
+          console.log(`❌ Client error (${lastStatusCode}) - not retrying: ${lastError.message}`);
+          throw lastError;
+        }
+        if (attempt === retries) {
+          console.log(`❌ Final attempt failed: ${lastError.message}`);
+          break;
+        }
+        const baseDelay = retryDelay * Math.pow(2, attempt);
+        const jitter = Math.random() * 0.1 * baseDelay;
+        const delay = Math.floor(baseDelay + jitter);
+        console.log(`\uD83D\uDD04 Retrying in ${delay}ms (attempt ${attempt + 1}/${retries + 1}): ${lastError.message}`);
+        await this.sleep(delay);
+      }
+    }
+    const finalError = new Error(`Request failed after ${retries + 1} attempts: ${lastError?.message}${lastStatusCode ? ` (HTTP ${lastStatusCode})` : ""}`);
+    if (lastStatusCode === 404 || lastError?.message.includes("The specified resource does not exist")) {
+      console.error(`\uD83D\uDD0D This appears to be a resource not found error. Check your app_id/bundle_id and API key permissions.`);
+    }
+    throw finalError;
+  }
+  isRetryableError(statusCode, errorMessage) {
+    if (statusCode === 429) {
+      return true;
+    }
+    if (statusCode >= 500) {
+      return true;
+    }
+    if (errorMessage.includes("timeout") || errorMessage.includes("network")) {
+      return true;
+    }
+    if (errorMessage.includes("temporarily unavailable") || errorMessage.includes("service unavailable")) {
+      return true;
+    }
+    if (statusCode >= 400 && statusCode < 500) {
+      return false;
+    }
+    return false;
+  }
+  buildUrl(endpoint, params) {
+    let fullUrl;
+    if (endpoint.startsWith("/")) {
+      fullUrl = this.baseUrl.endsWith("/") ? this.baseUrl + endpoint.slice(1) : this.baseUrl + endpoint;
+    } else {
+      fullUrl = new URL(endpoint, this.baseUrl).toString();
+    }
+    const url = new URL(fullUrl);
+    if (params) {
+      if (params.limit) {
+        url.searchParams.set("limit", params.limit.toString());
+      }
+      if (params.sort) {
+        url.searchParams.set("sort", params.sort);
+      }
+      if (params.include) {
+        url.searchParams.set("include", params.include);
+      }
+      if (params.filter) {
+        for (const [key, value] of Object.entries(params.filter)) {
+          url.searchParams.set(`filter[${key}]`, value);
+        }
+      }
+      if (params.fields) {
+        for (const [key, value] of Object.entries(params.fields)) {
+          url.searchParams.set(`fields[${key}]`, value);
+        }
+      }
+    }
+    return url.toString();
+  }
+  updateRateLimitInfo(response) {
+    const remaining = response.headers.get("X-RateLimit-Remaining");
+    const reset = response.headers.get("X-RateLimit-Reset");
+    const limit = response.headers.get("X-RateLimit-Limit");
+    if (remaining && reset && limit) {
+      this.rateLimitInfo = {
+        remaining: Number.parseInt(remaining, 10),
+        reset: new Date(Number.parseInt(reset, 10) * 1000),
+        limit: Number.parseInt(limit, 10)
+      };
+    }
+  }
+  async waitForRateLimit() {
+    if (!this.rateLimitInfo) {
+      return;
+    }
+    if (this.rateLimitInfo.remaining <= 5) {
+      const now = new Date;
+      const waitTime = this.rateLimitInfo.reset.getTime() - now.getTime();
+      if (waitTime > 0) {
+        console.log(`Rate limit approaching. Waiting ${Math.ceil(waitTime / 1000)} seconds...`);
+        await this.sleep(waitTime);
+      }
+    }
+  }
+  async processCrashReportsWithDetails(crashes, processedData) {
+    for (const crash of crashes) {
+      let processedCrash = this.processCrashReport(crash);
+      try {
+        console.log(`\uD83D\uDD0D Fetching enhanced crash metadata for ${crash.id}`);
+        const detailedCrash = await this.getDetailedCrashSubmission(crash.id, {
+          include: "build,tester",
+          fields: {
+            betaFeedbackCrashSubmissions: [
+              "createdDate",
+              "comment",
+              "email",
+              "deviceModel",
+              "osVersion",
+              "locale",
+              "timeZone",
+              "architecture",
+              "connectionType",
+              "pairedAppleWatch",
+              "appUptimeInMilliseconds",
+              "diskBytesAvailable",
+              "diskBytesTotal",
+              "batteryPercentage",
+              "screenWidthInPoints",
+              "screenHeightInPoints",
+              "appPlatform",
+              "devicePlatform",
+              "deviceFamily",
+              "buildBundleId"
+            ].join(",")
+          }
+        });
+        processedCrash = this.mergeEnhancedCrashMetadata(processedCrash, detailedCrash);
+        console.log(`✅ Enhanced crash metadata obtained for ${crash.id}`);
+      } catch (error) {
+        console.warn(`⚠️ Failed to get enhanced crash metadata for ${crash.id}:`, error);
+      }
+      try {
+        const crashLog = await this.getCrashLog(crash.id);
+        const logText = this.getCrashLogText(crashLog);
+        if (logText && processedCrash.crashData) {
+          processedCrash.crashData.detailedLogs = [logText];
+        }
+      } catch (error) {
+        console.warn(`Failed to get detailed crash log for ${crash.id}:`, error);
+      }
+      processedData.push(processedCrash);
+    }
+  }
+  async processScreenshotFeedbackData(screenshots, processedData) {
+    for (const screenshot of screenshots) {
+      const processedScreenshot = this.processScreenshotFeedback(screenshot);
+      try {
+        console.log(`\uD83D\uDD0D Fetching enhanced screenshot metadata for ${screenshot.id}`);
+        const detailedScreenshot = await this.getDetailedScreenshotSubmission(screenshot.id, {
+          include: "build,tester",
+          fields: {
+            betaFeedbackScreenshotSubmissions: [
+              "createdDate",
+              "comment",
+              "email",
+              "deviceModel",
+              "osVersion",
+              "locale",
+              "timeZone",
+              "architecture",
+              "connectionType",
+              "pairedAppleWatch",
+              "appUptimeInMilliseconds",
+              "diskBytesAvailable",
+              "diskBytesTotal",
+              "batteryPercentage",
+              "screenWidthInPoints",
+              "screenHeightInPoints",
+              "appPlatform",
+              "devicePlatform",
+              "deviceFamily",
+              "buildBundleId",
+              "screenshots"
+            ].join(",")
+          }
+        });
+        if (processedScreenshot.screenshotData) {
+          const screenshotsFromAPI = detailedScreenshot.attributes.screenshots;
+          console.log(`\uD83D\uDD0D DEBUG: screenshots from API for ${screenshot.id}:`, JSON.stringify(screenshotsFromAPI, null, 2));
+          if (screenshotsFromAPI && screenshotsFromAPI.length > 0) {
+            processedScreenshot.screenshotData.images = screenshotsFromAPI.map((img, index) => {
+              const processedImg = {
+                url: img?.url || "",
+                fileName: img?.fileName || `screenshot_${index}.png`,
+                fileSize: img?.fileSize || 0,
+                expiresAt: new Date(img?.expiresAt || Date.now() + 3600000)
+              };
+              console.log(`\uD83D\uDD0D DEBUG: Processed image ${index}:`, JSON.stringify(processedImg, null, 2));
+              return processedImg;
+            });
+            processedScreenshot.screenshotData.enhancedImages = await this.processEnhancedScreenshotImages(screenshotsFromAPI);
+            console.log(`\uD83D\uDCF7 Found ${processedScreenshot.screenshotData.images.length} screenshot(s) from detailed API for ${screenshot.id}`);
+          } else {
+            console.warn(`⚠️ No screenshots in detailed API response for ${screenshot.id}`);
+          }
+        }
+        console.log(`✅ Enhanced screenshot metadata obtained for ${screenshot.id}`);
+      } catch (error) {
+        console.warn(`⚠️ Failed to get enhanced screenshot metadata for ${screenshot.id}:`, error);
+      }
+      if (processedScreenshot.screenshotData?.images && processedScreenshot.screenshotData.images.length > 0) {
+        console.log(`\uD83D\uDCF8 Pre-downloading ${processedScreenshot.screenshotData.images.length} screenshot(s) for ${screenshot.id}...`);
+        for (const imageInfo of processedScreenshot.screenshotData.images) {
+          try {
+            const imageData = await this.downloadSingleScreenshotImage(imageInfo);
+            if (imageData) {
+              imageInfo.cachedData = imageData;
+              console.log(`✅ Cached screenshot: ${imageInfo.fileName} (${imageData.length} bytes)`);
+            }
+          } catch (error) {
+            console.warn(`⚠️ Failed to pre-download screenshot ${imageInfo.fileName}:`, error);
+          }
+        }
+      } else {
+        console.warn(`⚠️ No screenshots available to download for ${screenshot.id}`);
+      }
+      processedData.push(processedScreenshot);
+    }
+  }
+  async processEnhancedScreenshotImages(screenshots) {
+    if (!screenshots || !Array.isArray(screenshots)) {
+      return [];
+    }
+    return screenshots.map((screenshot, index) => ({
+      url: screenshot?.url || "",
+      fileName: screenshot?.fileName || `screenshot_${index}.png`,
+      fileSize: screenshot?.fileSize || 0,
+      expiresAt: screenshot?.expiresAt ? new Date(screenshot.expiresAt) : new Date,
+      imageFormat: this.extractImageFormat(screenshot?.fileName),
+      imageScale: 1,
+      imageDimensions: {
+        width: 0,
+        height: 0
+      },
+      compressionQuality: 0.8,
+      metadata: {
+        index,
+        processingTime: new Date().toISOString()
+      }
+    }));
+  }
+  extractImageFormat(fileName) {
+    if (!fileName) {
+      return "png";
+    }
+    const extension = fileName.toLowerCase().split(".").pop();
+    switch (extension) {
+      case "png":
+        return "png";
+      case "jpg":
+      case "jpeg":
+        return "jpeg";
+      case "heic":
+        return "heic";
+      default:
+        return "png";
+    }
+  }
+  processCrashReport(crash) {
+    const attrs = crash.attributes;
+    const submittedAt = attrs.createdDate || attrs.submittedAt || new Date().toISOString();
+    const bundleId = attrs.buildBundleId || attrs.bundleId || "";
+    const deviceFamily = attrs.deviceFamily || "UNKNOWN";
+    const appVersion = attrs.appVersion || "Unknown";
+    const buildNumber = attrs.buildNumber || "Unknown";
+    return {
+      id: crash.id,
+      type: "crash",
+      submittedAt: new Date(submittedAt),
+      appVersion,
+      buildNumber,
+      deviceInfo: {
+        family: deviceFamily,
+        model: attrs.deviceModel,
+        osVersion: attrs.osVersion,
+        locale: attrs.locale
+      },
+      bundleId,
+      testerInfo: attrs.email ? {
+        email: attrs.email
+      } : undefined,
+      crashData: {
+        trace: attrs.crashTrace || "",
+        type: attrs.crashType || "Unknown",
+        exceptionType: attrs.exceptionType,
+        exceptionMessage: attrs.exceptionMessage,
+        logs: attrs.crashLogs?.map((log) => ({
+          url: log.url,
+          expiresAt: new Date(log.expiresAt)
+        })) || []
+      }
+    };
+  }
+  processScreenshotFeedback(screenshot) {
+    const attrs = screenshot.attributes;
+    const submittedAt = attrs.createdDate || attrs.submittedAt || new Date().toISOString();
+    const bundleId = attrs.buildBundleId || attrs.bundleId || "";
+    const deviceFamily = attrs.deviceFamily || "UNKNOWN";
+    const feedbackText = attrs.comment || attrs.feedbackText || "";
+    const appVersion = attrs.appVersion || "Unknown";
+    const buildNumber = attrs.buildNumber || "Unknown";
+    return {
+      id: screenshot.id,
+      type: "screenshot",
+      submittedAt: new Date(submittedAt),
+      appVersion,
+      buildNumber,
+      deviceInfo: {
+        family: deviceFamily,
+        model: attrs.deviceModel,
+        osVersion: attrs.osVersion,
+        locale: attrs.locale
+      },
+      bundleId,
+      testerInfo: attrs.email ? {
+        email: attrs.email
+      } : undefined,
+      screenshotData: {
+        text: feedbackText,
+        images: (attrs.screenshots || []).map((img, index) => ({
+          url: img.url,
+          fileName: img.fileName || `screenshot_${index}.png`,
+          fileSize: img.fileSize || 0,
+          expiresAt: new Date(img.expiresAt || Date.now() + 3600000)
+        })),
+        annotations: attrs.annotations || []
+      }
+    };
+  }
+  mergeEnhancedCrashMetadata(processedCrash, detailedCrash) {
+    if (!processedCrash.crashData) {
+      return processedCrash;
+    }
+    const attrs = detailedCrash.attributes;
+    const enhancedCrashData = {
+      ...processedCrash.crashData,
+      systemInfo: {
+        batteryPercentage: attrs.batteryPercentage,
+        appUptimeInMilliseconds: attrs.appUptimeInMilliseconds,
+        connectionType: attrs.connectionType,
+        diskBytesAvailable: attrs.diskBytesAvailable,
+        diskBytesTotal: attrs.diskBytesTotal,
+        architecture: attrs.architecture,
+        pairedAppleWatch: attrs.pairedAppleWatch,
+        screenDimensions: {
+          width: attrs.screenWidthInPoints,
+          height: attrs.screenHeightInPoints
+        },
+        diskSpaceRemainingGB: attrs.diskBytesAvailable ? Math.round(attrs.diskBytesAvailable / 1024 ** 3 * 10) / 10 : null,
+        appUptimeFormatted: attrs.appUptimeInMilliseconds ? this.formatUptime(attrs.appUptimeInMilliseconds) : null
+      }
+    };
+    return {
+      ...processedCrash,
+      crashData: enhancedCrashData
+    };
+  }
+  formatUptime(uptimeMs) {
+    const seconds = Math.floor(uptimeMs / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    if (days > 0)
+      return `${days}d ${hours % 24}h ${minutes % 60}m`;
+    if (hours > 0)
+      return `${hours}h ${minutes % 60}m`;
+    if (minutes > 0)
+      return `${minutes}m ${seconds % 60}s`;
+    return `${seconds}s`;
+  }
+  sleep(ms) {
+    return new Promise((resolve2) => setTimeout(resolve2, ms));
+  }
+}
+var _clientInstance = null;
+function getTestFlightClient() {
+  if (!_clientInstance) {
+    _clientInstance = new TestFlightClient;
+  }
+  return _clientInstance;
+}
+
+// action-entrypoint.ts
 init_config();
 init_idempotency_service();
-var core2 = __toESM(require_core(), 1);
 
 // src/utils/monitoring/health-checkers.ts
 init_codebase_analyzer();
 init_github_client();
 init_linear_client();
 init_llm_client();
-init_testflight_client();
 init_state_manager();
 
 // src/utils/monitoring/health-check-base.ts

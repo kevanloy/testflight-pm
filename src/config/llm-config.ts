@@ -245,17 +245,17 @@ export function loadLLMConfig(): LLMEnhancementConfig {
 	}
 
 	// API Keys
-	const openaiKey = getEnvVar(LLM_ENV_VARS.OPENAI_API_KEY);
+	const openaiKey = getEnvVar(LLM_ENV_VARS.OPENAI_API_KEY, "openai-api-key");
 	if (openaiKey) {
 		config.providers.openai.apiKey = openaiKey;
 	}
 
-	const anthropicKey = getEnvVar(LLM_ENV_VARS.ANTHROPIC_API_KEY);
+	const anthropicKey = getEnvVar(LLM_ENV_VARS.ANTHROPIC_API_KEY, "anthropic-api-key");
 	if (anthropicKey) {
 		config.providers.anthropic.apiKey = anthropicKey;
 	}
 
-	const googleKey = getEnvVar(LLM_ENV_VARS.GOOGLE_API_KEY);
+	const googleKey = getEnvVar(LLM_ENV_VARS.GOOGLE_API_KEY, "google-api-key");
 	if (googleKey) {
 		config.providers.google.apiKey = googleKey;
 	}
