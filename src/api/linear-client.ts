@@ -123,6 +123,10 @@ export class LinearClient {
 			console.log(`📝 Linear issue data prepared: title="${issueData.title}", teamId=${issueData.teamId}`);
 			console.log(`📝 Description preview (first 500 chars): ${issueData.description?.substring(0, 500)}...`);
 
+			// Resolve label names to IDs
+			const labelIds = await this.resolveLabelNamesToIds(issueData.labels);
+			console.log(`🏷️ Resolved ${labelIds.length} label IDs from ${issueData.labels.length} label names`);
+
 			// Create issue using Linear SDK
 			console.log(`📤 Calling Linear SDK createIssue...`);
 			const issueCreatePayload = await this.sdk.createIssue({
@@ -132,6 +136,7 @@ export class LinearClient {
 				priority: this.mapPriorityToLinearPriority(issueData.priority),
 				assigneeId: issueData.assigneeId,
 				projectId: issueData.projectId,
+				labelIds: labelIds.length > 0 ? labelIds : undefined,
 			});
 
 			console.log(`📤 Linear SDK response: success=${issueCreatePayload.success}`);
@@ -279,7 +284,8 @@ export class LinearClient {
 	): Promise<LinearIssue | null> {
 		try {
 			// Use Linear's search API to find issues containing the TestFlight ID
-			const searchQuery = `TestFlight ID: ${feedback.id}`;
+			// Search for just the feedback ID since it's unique
+			const searchQuery = feedback.id;
 
 			// Use searchIssues for text-based search instead of filter operators
 			const searchResults = await this.sdk.searchIssues(searchQuery, {
@@ -294,7 +300,12 @@ export class LinearClient {
 				}
 
 				const description = await issue.description;
-				if (description?.includes(`TestFlight ID: ${feedback.id}`)) {
+				// Check for feedback ID in any format (table, footer, or plain)
+				// Table format: | **TestFlight ID** | `{id}` |
+				// Footer format: ID:* `{id}`
+				// Plain format: TestFlight ID: {id}
+				if (description?.includes(feedback.id)) {
+					console.log(`🔍 Found duplicate Linear issue for feedback ${feedback.id}: ${issue.identifier}`);
 					return await this.convertToLinearIssue(issue);
 				}
 			}
@@ -409,6 +420,60 @@ export class LinearClient {
 			return issueLabels;
 		} catch (error) {
 			throw new Error(`Failed to get Linear issue labels: ${error}`);
+		}
+	}
+
+	/**
+	 * Resolves label names to Linear label IDs
+	 * Creates labels if they don't exist
+	 */
+	private async resolveLabelNamesToIds(labelNames: string[]): Promise<string[]> {
+		if (labelNames.length === 0) {
+			return [];
+		}
+
+		try {
+			// Fetch all available labels for the team
+			const existingLabels = await this.sdk.issueLabels({
+				filter: {
+					team: { id: { eq: this.config.teamId } },
+				},
+			});
+
+			const labelMap = new Map<string, string>();
+			for (const label of existingLabels.nodes) {
+				labelMap.set(label.name.toLowerCase(), label.id);
+			}
+
+			const resolvedIds: string[] = [];
+			for (const name of labelNames) {
+				const labelId = labelMap.get(name.toLowerCase());
+				if (labelId) {
+					resolvedIds.push(labelId);
+				} else {
+					// Try to create the label if it doesn't exist
+					try {
+						const createResult = await this.sdk.createIssueLabel({
+							name: name,
+							teamId: this.config.teamId,
+						});
+						if (createResult.success) {
+							const newLabel = await createResult.issueLabel;
+							if (newLabel) {
+								resolvedIds.push(newLabel.id);
+								console.log(`🏷️ Created new label: ${name}`);
+							}
+						}
+					} catch (createError) {
+						console.warn(`⚠️ Failed to create label "${name}": ${createError}`);
+					}
+				}
+			}
+
+			return resolvedIds;
+		} catch (error) {
+			console.warn(`⚠️ Error resolving label names to IDs: ${error}`);
+			return [];
 		}
 	}
 
