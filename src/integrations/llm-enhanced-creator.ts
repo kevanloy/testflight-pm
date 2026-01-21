@@ -15,6 +15,7 @@ import {
 } from "../analysis/codebase-analyzer.js";
 import { getGitHubClient } from "../api/github-client.js";
 import { getLinearClient } from "../api/linear-client.js";
+import { getTestFlightClient } from "../api/testflight-client.js";
 import {
 	getLLMClient,
 	type LLMEnhancementRequest,
@@ -106,6 +107,7 @@ export class LLMEnhancedIssueCreator {
 	private readonly codebaseAnalyzer = getCodebaseAnalyzer();
 	private readonly githubClient = getGitHubClient();
 	private readonly linearClient = getLinearClient();
+	private readonly testFlightClient = getTestFlightClient();
 	private readonly idempotencyService = getIdempotencyService();
 	private readonly stateManager = getStateManager();
 
@@ -195,6 +197,17 @@ export class LLMEnhancedIssueCreator {
 					[feedback.id],
 					options.actionRunId,
 				);
+
+				// Delete feedback from App Store Connect after successful issue creation
+				if (result.linear?.issue) {
+					console.log(`🗑️ Deleting feedback from App Store Connect after successful Linear issue creation...`);
+					const deleted = await this.testFlightClient.deleteFeedbackSubmission(feedback.id);
+					if (deleted) {
+						console.log(`✅ Feedback ${feedback.id} deleted from App Store Connect`);
+					} else {
+						console.warn(`⚠️ Failed to delete feedback ${feedback.id} from App Store Connect`);
+					}
+				}
 			}
 
 			// Calculate final metrics

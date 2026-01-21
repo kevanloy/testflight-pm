@@ -140,6 +140,49 @@ export class TestFlightClient {
 	}
 
 	/**
+	 * Deletes a beta feedback screenshot submission from App Store Connect
+	 * DELETE /v1/betaFeedbackScreenshotSubmissions/{id}
+	 */
+	public async deleteFeedbackSubmission(feedbackId: string): Promise<boolean> {
+		try {
+			console.log(`🗑️ Deleting feedback submission: ${feedbackId}`);
+			await this.makeDeleteRequest(`/betaFeedbackScreenshotSubmissions/${feedbackId}`);
+			console.log(`✅ Successfully deleted feedback: ${feedbackId}`);
+			return true;
+		} catch (error) {
+			console.error(`❌ Failed to delete feedback ${feedbackId}:`, error);
+			return false;
+		}
+	}
+
+	/**
+	 * Makes a DELETE request to the App Store Connect API
+	 */
+	private async makeDeleteRequest(endpoint: string): Promise<void> {
+		const auth = getAuthInstance();
+		const token = await auth.getValidToken();
+
+		const url = `${this.baseUrl}${endpoint}`;
+
+		const response = await fetch(url, {
+			method: "DELETE",
+			headers: {
+				Authorization: `Bearer ${token}`,
+				"Content-Type": "application/json",
+			},
+			signal: AbortSignal.timeout(this.defaultTimeout),
+		});
+
+		// Update rate limit info from response headers
+		this.updateRateLimitInfo(response);
+
+		if (!response.ok) {
+			const errorBody = await response.text();
+			throw new Error(`DELETE ${endpoint} failed: ${response.status} - ${errorBody}`);
+		}
+	}
+
+	/**
 	 * Gets screenshot feedback for a specific app (legacy method - use getAppScreenshotSubmissions instead)
 	 * @deprecated Use getAppScreenshotSubmissions for better performance and proper API endpoint
 	 */
