@@ -156,9 +156,12 @@ export class LinearClient {
 			console.log(`📝 Linear issue data prepared: title="${issueData.title}", teamId=${issueData.teamId}`);
 			console.log(`📝 Description preview (first 500 chars): ${issueData.description?.substring(0, 500)}...`);
 
-			// Resolve label names to IDs
-			const labelIds = await this.resolveLabelNamesToIds(issueData.labels);
-			console.log(`🏷️ Resolved ${labelIds.length} label IDs from ${issueData.labels.length} label names`);
+			// Resolve label names to IDs - dedupe both input and output to avoid Linear API errors
+			const uniqueLabelNames = [...new Set(issueData.labels.map(l => l.toLowerCase()))];
+			console.log(`🏷️ Deduped ${issueData.labels.length} label names to ${uniqueLabelNames.length} unique names`);
+			const labelIds = await this.resolveLabelNamesToIds(uniqueLabelNames);
+			const uniqueLabelIds = [...new Set(labelIds)]; // Dedupe IDs too just in case
+			console.log(`🏷️ Resolved ${uniqueLabelIds.length} unique label IDs from ${uniqueLabelNames.length} label names`);
 
 			// Create issue using Linear SDK
 			console.log(`📤 Calling Linear SDK createIssue...`);
@@ -169,7 +172,7 @@ export class LinearClient {
 				priority: this.mapPriorityToLinearPriority(issueData.priority),
 				assigneeId: issueData.assigneeId,
 				projectId: issueData.projectId,
-				labelIds: labelIds.length > 0 ? labelIds : undefined,
+				labelIds: uniqueLabelIds.length > 0 ? uniqueLabelIds : undefined,
 			});
 
 			console.log(`📤 Linear SDK response: success=${issueCreatePayload.success}`);
@@ -531,25 +534,29 @@ export class LinearClient {
 			try {
 				console.log(`🏷️ Resolving ${labelNames.length} label(s) to IDs (attempt ${attempt}/${maxRetries})...`);
 
-				// Fetch all available labels for the team
+				// Fetch ALL labels (team + workspace level) to handle workspace-scoped labels
 				const existingLabels = await this.sdk.issueLabels({
-					filter: {
-						team: { id: { eq: this.config.teamId } },
-					},
+					first: 250, // Get more labels to include workspace-level ones
 				});
 
 				const labelMap = new Map<string, string>();
 				for (const label of existingLabels.nodes) {
 					labelMap.set(label.name.toLowerCase(), label.id);
 				}
+				console.log(`🏷️ Found ${labelMap.size} existing labels in workspace`);
 
 				const resolvedIds: string[] = [];
 				const failedLabels: string[] = [];
+				const alreadyResolved = new Set<string>(); // Track resolved IDs to avoid duplicates
 
 				for (const name of labelNames) {
-					const labelId = labelMap.get(name.toLowerCase());
+					const normalizedName = name.toLowerCase();
+					const labelId = labelMap.get(normalizedName);
 					if (labelId) {
-						resolvedIds.push(labelId);
+						if (!alreadyResolved.has(labelId)) {
+							resolvedIds.push(labelId);
+							alreadyResolved.add(labelId);
+						}
 					} else {
 						// Try to create the label if it doesn't exist
 						try {
@@ -559,18 +566,33 @@ export class LinearClient {
 							});
 							if (createResult.success) {
 								const newLabel = await createResult.issueLabel;
-								if (newLabel) {
+								if (newLabel && !alreadyResolved.has(newLabel.id)) {
 									resolvedIds.push(newLabel.id);
+									alreadyResolved.add(newLabel.id);
 									console.log(`🏷️ Created new label: ${name}`);
-								} else {
-									failedLabels.push(name);
 								}
 							} else {
 								failedLabels.push(name);
 							}
 						} catch (createError) {
-							console.warn(`⚠️ Failed to create label "${name}": ${createError}`);
-							failedLabels.push(name);
+							const errorMsg = String(createError);
+							// If label already exists at workspace level, try to find it again
+							if (errorMsg.includes('Duplicate label name') || errorMsg.includes('already exists')) {
+								console.log(`🏷️ Label "${name}" exists at workspace level, searching...`);
+								// Re-fetch all labels to find the workspace-level one
+								const allLabels = await this.sdk.issueLabels({ first: 250 });
+								for (const label of allLabels.nodes) {
+									if (label.name.toLowerCase() === normalizedName && !alreadyResolved.has(label.id)) {
+										resolvedIds.push(label.id);
+										alreadyResolved.add(label.id);
+										console.log(`🏷️ Found workspace label: ${name} -> ${label.id}`);
+										break;
+									}
+								}
+							} else {
+								console.warn(`⚠️ Failed to create label "${name}": ${createError}`);
+								failedLabels.push(name);
+							}
 						}
 					}
 				}
