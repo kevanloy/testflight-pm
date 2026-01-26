@@ -48025,7 +48025,8 @@ class LLMEnhancedIssueCreator {
       throw error;
     }
   }
-  formatEnhancedGitHubBody(llmAnalysis, _context) {
+  formatEnhancedGitHubBody(llmAnalysis, context) {
+    const { feedback } = context;
     let body = llmAnalysis.enhancedDescription;
     if (llmAnalysis.analysis.affectedComponents.length > 0) {
       body += `
@@ -48056,6 +48057,9 @@ ${llmAnalysis.analysis.suggestedFix}`;
 
 ---
 *Enhanced with LLM analysis (${llmAnalysis.metadata.provider}/${llmAnalysis.metadata.model}) - Confidence: ${(llmAnalysis.analysis.confidence * 100).toFixed(0)}%*`;
+    body += `
+
+**TestFlight ID**: ${feedback.id}`;
     return body;
   }
   formatEnhancedLinearDescription(llmAnalysis, context) {
@@ -48146,6 +48150,8 @@ ${llmAnalysis.analysis.suggestedFix}`;
       }
     }
     description += `- **Submitted**: ${feedback.submittedAt.toISOString()}
+`;
+    description += `- **TestFlight ID**: ${feedback.id}
 `;
     return description;
   }

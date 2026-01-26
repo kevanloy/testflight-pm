@@ -550,8 +550,9 @@ export class LLMEnhancedIssueCreator {
 	 */
 	private formatEnhancedGitHubBody(
 		llmAnalysis: LLMEnhancementResponse,
-		_context: EnhancementContext,
+		context: EnhancementContext,
 	): string {
+		const { feedback } = context;
 		let body = llmAnalysis.enhancedDescription;
 
 		// Add analysis section
@@ -572,8 +573,9 @@ export class LLMEnhancedIssueCreator {
 			body += `\n\n## 💡 Suggested Fix\n\n${llmAnalysis.analysis.suggestedFix}`;
 		}
 
-		// Add LLM enhancement metadata
+		// Add LLM enhancement metadata and TestFlight ID (critical for duplicate detection)
 		body += `\n\n---\n*Enhanced with LLM analysis (${llmAnalysis.metadata.provider}/${llmAnalysis.metadata.model}) - Confidence: ${(llmAnalysis.analysis.confidence * 100).toFixed(0)}%*`;
+		body += `\n\n**TestFlight ID**: ${feedback.id}`;
 
 		return body;
 	}
@@ -658,6 +660,7 @@ export class LLMEnhancedIssueCreator {
 		}
 
 		description += `- **Submitted**: ${feedback.submittedAt.toISOString()}\n`;
+		description += `- **TestFlight ID**: ${feedback.id}\n`;
 
 		return description;
 	}
