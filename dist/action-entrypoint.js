@@ -48158,7 +48158,8 @@ ${llmAnalysis.analysis.suggestedFix}`;
   generateMeaningfulTitle(llmTitle, feedback) {
     const isCrash = feedback.type === "crash";
     const typeIcon = isCrash ? "\uD83D\uDCA5" : "\uD83D\uDCF1";
-    const genericTitles = [
+    const userText = (feedback.screenshotData?.text || feedback.crashData?.exceptionMessage || "").trim();
+    const genericPatterns = [
       "testflight issue",
       "user feedback",
       "crash report",
@@ -48166,20 +48167,20 @@ ${llmAnalysis.analysis.suggestedFix}`;
       "crash",
       "issue"
     ];
-    const isGenericTitle = !llmTitle || genericTitles.some((generic) => llmTitle.toLowerCase().replace(/[📱💥]\s*/, "").trim() === generic);
-    if (!isGenericTitle && llmTitle) {
+    const normalizedLlmTitle = llmTitle?.toLowerCase().replace(/[📱💥🐛⚠️🔴]\s*/g, "").replace(/[-–—:]\s*$/, "").trim() || "";
+    const isGenericTitle = !llmTitle || normalizedLlmTitle.length < 5 || genericPatterns.some((pattern) => normalizedLlmTitle === pattern || normalizedLlmTitle.startsWith(pattern + " -") || normalizedLlmTitle.startsWith(pattern + ":") || normalizedLlmTitle.endsWith(pattern));
+    if (!isGenericTitle && llmTitle && normalizedLlmTitle.length > 15) {
       return llmTitle;
     }
-    const userText = feedback.screenshotData?.text || feedback.crashData?.exceptionMessage || "";
-    if (!userText) {
-      return `${typeIcon} ${isCrash ? "Crash Report" : "User Feedback"} - ${feedback.appVersion}`;
+    if (userText) {
+      const cleaned = userText.replace(/\n+/g, " ").replace(/\s+/g, " ").trim();
+      const maxLength = 120;
+      let titleText = cleaned.length > maxLength ? `${cleaned.substring(0, maxLength - 3)}...` : cleaned;
+      titleText = titleText.charAt(0).toUpperCase() + titleText.slice(1);
+      return `${typeIcon} ${titleText}`;
     }
-    const cleaned = userText.replace(/\n+/g, " ").replace(/\s+/g, " ").trim();
-    const firstSentence = cleaned.split(/[.!?]/)[0]?.trim() || cleaned;
-    const maxLength = 80;
-    let title = firstSentence.length > maxLength ? `${firstSentence.substring(0, maxLength - 3)}...` : firstSentence;
-    title = title.charAt(0).toUpperCase() + title.slice(1);
-    return `${typeIcon} ${title}`;
+    const version = feedback.appVersion && feedback.appVersion !== "Unknown" ? ` - v${feedback.appVersion}` : "";
+    return `${typeIcon} ${isCrash ? "Crash Report" : "User Feedback"}${version}`;
   }
   async fallbackToStandardCreation(feedback, options, result, reason) {
     if (!options.fallbackToStandard) {

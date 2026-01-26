@@ -675,8 +675,13 @@ export class LLMEnhancedIssueCreator {
 		const isCrash = feedback.type === "crash";
 		const typeIcon = isCrash ? "💥" : "📱";
 
+		// Get user's actual feedback text first - this is the most reliable source
+		const userText = (feedback.screenshotData?.text ||
+			feedback.crashData?.exceptionMessage ||
+			"").trim();
+
 		// Check if LLM title is meaningful (not generic)
-		const genericTitles = [
+		const genericPatterns = [
 			"testflight issue",
 			"user feedback",
 			"crash report",
@@ -685,42 +690,51 @@ export class LLMEnhancedIssueCreator {
 			"issue",
 		];
 
+		const normalizedLlmTitle = llmTitle
+			?.toLowerCase()
+			.replace(/[📱💥🐛⚠️🔴]\s*/g, "") // Remove common emojis
+			.replace(/[-–—:]\s*$/, "") // Remove trailing punctuation
+			.trim() || "";
+
 		const isGenericTitle = !llmTitle ||
-			genericTitles.some(generic =>
-				llmTitle.toLowerCase().replace(/[📱💥]\s*/, "").trim() === generic
+			normalizedLlmTitle.length < 5 ||
+			genericPatterns.some(pattern =>
+				normalizedLlmTitle === pattern ||
+				normalizedLlmTitle.startsWith(pattern + " -") ||
+				normalizedLlmTitle.startsWith(pattern + ":") ||
+				normalizedLlmTitle.endsWith(pattern)
 			);
 
-		if (!isGenericTitle && llmTitle) {
+		// If LLM title is good and specific, use it
+		if (!isGenericTitle && llmTitle && normalizedLlmTitle.length > 15) {
 			return llmTitle;
 		}
 
-		// Extract title from user's feedback text
-		const userText = feedback.screenshotData?.text ||
-			feedback.crashData?.exceptionMessage ||
-			"";
+		// Always prefer user's actual feedback text for the title
+		if (userText) {
+			// Clean and extract meaningful content
+			const cleaned = userText
+				.replace(/\n+/g, " ")
+				.replace(/\s+/g, " ")
+				.trim();
 
-		if (!userText) {
-			return `${typeIcon} ${isCrash ? "Crash Report" : "User Feedback"} - ${feedback.appVersion}`;
+			// Use first 120 chars as requested
+			const maxLength = 120;
+			let titleText = cleaned.length > maxLength
+				? `${cleaned.substring(0, maxLength - 3)}...`
+				: cleaned;
+
+			// Capitalize first letter
+			titleText = titleText.charAt(0).toUpperCase() + titleText.slice(1);
+
+			return `${typeIcon} ${titleText}`;
 		}
 
-		// Clean and extract first meaningful sentence/phrase
-		const cleaned = userText
-			.replace(/\n+/g, " ")
-			.replace(/\s+/g, " ")
-			.trim();
-
-		// Take first sentence or first 80 chars
-		const firstSentence = cleaned.split(/[.!?]/)[0]?.trim() || cleaned;
-		const maxLength = 80;
-
-		let title = firstSentence.length > maxLength
-			? `${firstSentence.substring(0, maxLength - 3)}...`
-			: firstSentence;
-
-		// Capitalize first letter
-		title = title.charAt(0).toUpperCase() + title.slice(1);
-
-		return `${typeIcon} ${title}`;
+		// Last resort: generic title with version
+		const version = feedback.appVersion && feedback.appVersion !== "Unknown"
+			? ` - v${feedback.appVersion}`
+			: "";
+		return `${typeIcon} ${isCrash ? "Crash Report" : "User Feedback"}${version}`;
 	}
 
 	/**
