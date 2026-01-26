@@ -26872,7 +26872,14 @@ class LLMClient {
           ...request,
           model: request.model || providerConfig.model
         });
-        const providerSpecificRequest = fromUniversal(currentProvider, universalRequest);
+        let providerSpecificRequest = fromUniversal(currentProvider, universalRequest);
+        if (currentProvider === "openai" && providerSpecificRequest.max_tokens) {
+          providerSpecificRequest = {
+            ...providerSpecificRequest,
+            max_completion_tokens: providerSpecificRequest.max_tokens
+          };
+          delete providerSpecificRequest.max_tokens;
+        }
         const rawResponse = await this.makeUnifiedAPICall(currentProvider, providerSpecificRequest, providerConfig, options);
         const llmResponse = this.convertUniversalToLLMResponse(rawResponse, currentProvider);
         this.updateUsageStats(llmResponse);
