@@ -45,8 +45,8 @@ export const DEFAULT_CACHE_CONFIG = {
  * Default label configuration following consistent patterns
  */
 export const DEFAULT_LABEL_CONFIG: Required<BaseLabelConfig> = {
-    defaultLabels: ["testflight", "testflight-pm", "feedback"],
-    crashLabels: ["bug", "crash", "urgent"],
+    defaultLabels: ["testflight", "testflight-pm"],
+    crashLabels: ["bug", "crash"],
     feedbackLabels: ["enhancement", "user-feedback"],
     additionalLabels: [],
 } as const;

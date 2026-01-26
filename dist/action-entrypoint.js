@@ -25845,8 +25845,8 @@ var init_defaults = __esm(() => {
     rateLimitBuffer: 100
   };
   DEFAULT_LABEL_CONFIG = {
-    defaultLabels: ["testflight", "testflight-pm", "feedback"],
-    crashLabels: ["bug", "crash", "urgent"],
+    defaultLabels: ["testflight", "testflight-pm"],
+    crashLabels: ["bug", "crash"],
     feedbackLabels: ["enhancement", "user-feedback"],
     additionalLabels: []
   };
@@ -46094,14 +46094,25 @@ class LinearClient {
         });
         const labelMap = new Map;
         const parentLabels = new Set;
+        const knownGroupLabels = new Set(["feedback", "bug", "feature", "improvement", "platform"]);
         for (const label of existingLabels.nodes) {
-          const children = await label.children;
-          const isParentLabel = children && children.nodes && children.nodes.length > 0;
-          if (isParentLabel) {
-            parentLabels.add(label.name.toLowerCase());
-            console.log(`\uD83C\uDFF7️ Skipping parent/group label: ${label.name}`);
-          } else {
-            labelMap.set(label.name.toLowerCase(), label.id);
+          const labelNameLower = label.name.toLowerCase();
+          if (knownGroupLabels.has(labelNameLower)) {
+            parentLabels.add(labelNameLower);
+            console.log(`\uD83C\uDFF7️ Skipping known group label: ${label.name}`);
+            continue;
+          }
+          try {
+            const children = await label.children;
+            const isParentLabel = children && children.nodes && children.nodes.length > 0;
+            if (isParentLabel) {
+              parentLabels.add(labelNameLower);
+              console.log(`\uD83C\uDFF7️ Skipping parent label with children: ${label.name}`);
+            } else {
+              labelMap.set(labelNameLower, label.id);
+            }
+          } catch {
+            labelMap.set(labelNameLower, label.id);
           }
         }
         console.log(`\uD83C\uDFF7️ Found ${labelMap.size} assignable labels (${parentLabels.size} parent labels excluded)`);

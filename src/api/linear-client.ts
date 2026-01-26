@@ -542,16 +542,33 @@ export class LinearClient {
 				const labelMap = new Map<string, string>();
 				const parentLabels = new Set<string>(); // Track parent/group labels that can't be assigned
 
-				for (const label of existingLabels.nodes) {
-					// Check if this label is a parent/group label (has children)
-					const children = await label.children;
-					const isParentLabel = children && children.nodes && children.nodes.length > 0;
+				// Known Linear group labels that cannot be assigned directly
+				const knownGroupLabels = new Set(["feedback", "bug", "feature", "improvement", "platform"]);
 
-					if (isParentLabel) {
-						parentLabels.add(label.name.toLowerCase());
-						console.log(`🏷️ Skipping parent/group label: ${label.name}`);
-					} else {
-						labelMap.set(label.name.toLowerCase(), label.id);
+				for (const label of existingLabels.nodes) {
+					const labelNameLower = label.name.toLowerCase();
+
+					// Check if this is a known group label first
+					if (knownGroupLabels.has(labelNameLower)) {
+						parentLabels.add(labelNameLower);
+						console.log(`🏷️ Skipping known group label: ${label.name}`);
+						continue;
+					}
+
+					// Also try to check if this label has children (parent/group label)
+					try {
+						const children = await label.children;
+						const isParentLabel = children && children.nodes && children.nodes.length > 0;
+
+						if (isParentLabel) {
+							parentLabels.add(labelNameLower);
+							console.log(`🏷️ Skipping parent label with children: ${label.name}`);
+						} else {
+							labelMap.set(labelNameLower, label.id);
+						}
+					} catch {
+						// If we can't check children, add it anyway
+						labelMap.set(labelNameLower, label.id);
 					}
 				}
 				console.log(`🏷️ Found ${labelMap.size} assignable labels (${parentLabels.size} parent labels excluded)`);
