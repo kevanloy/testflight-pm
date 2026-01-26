@@ -70,33 +70,59 @@ export class LinearClient {
 		},
 	): Promise<LinearIssue> {
 		try {
-			// Check for duplicates if enabled
+			// Check for duplicates if enabled - this is CRITICAL to prevent duplicate tickets
 			if (this.config.enableDuplicateDetection) {
-				const duplicateIssue = await this.findDuplicateIssue(feedback);
-				if (duplicateIssue) {
-					console.log(
-						`Duplicate issue found: ${duplicateIssue.identifier}. Adding comment instead.`,
-					);
-					await this.addTestFlightCommentToIssue(duplicateIssue.id, feedback);
-					return duplicateIssue;
+				try {
+					const duplicateIssue = await this.findDuplicateIssue(feedback);
+					if (duplicateIssue) {
+						console.log(
+							`✅ Duplicate issue found: ${duplicateIssue.identifier}. Adding comment instead of creating new issue.`,
+						);
+						await this.addTestFlightCommentToIssue(duplicateIssue.id, feedback);
+						return duplicateIssue;
+					}
+				} catch (dupError) {
+					// CRITICAL: If duplicate detection fails, we should NOT create a new issue
+					// as this could result in duplicate tickets
+					const errorMessage = dupError instanceof Error ? dupError.message : String(dupError);
+					console.error(`❌ CRITICAL: Duplicate detection failed: ${errorMessage}`);
+					console.error(`❌ Refusing to create new issue to prevent potential duplicate.`);
+					throw new Error(`Cannot create Linear issue: duplicate detection failed. ${errorMessage}`);
 				}
 			}
 
 			// Upload screenshots to Linear before creating the issue
+			// CRITICAL: Screenshots MUST be included - this is a key requirement
 			let screenshotUrls: Array<{ filename: string; url: string }> = [];
-			console.log(`🔍 DEBUG Linear: screenshotData exists: ${!!feedback.screenshotData}`);
-			console.log(`🔍 DEBUG Linear: images array: ${feedback.screenshotData?.images?.length || 0} items`);
+			console.log(`📸 Linear screenshot processing: screenshotData exists: ${!!feedback.screenshotData}, images: ${feedback.screenshotData?.images?.length || 0}`);
 
 			if (feedback.screenshotData?.images && feedback.screenshotData.images.length > 0) {
 				console.log(`📸 Uploading ${feedback.screenshotData.images.length} screenshot(s) to Linear...`);
-				const uploadResult = await this.uploadScreenshots(feedback);
-				screenshotUrls = uploadResult.urls;
-				console.log(`✅ Uploaded ${uploadResult.uploaded} screenshot(s), ${uploadResult.failed} failed`);
-				console.log(`🔍 DEBUG Linear: Screenshot URLs: ${JSON.stringify(screenshotUrls)}`);
 
-				// If upload failed, fall back to using Apple's direct URLs (they expire but better than nothing)
-				if (screenshotUrls.length === 0 && feedback.screenshotData.images.length > 0) {
-					console.log(`⚠️ Upload failed, falling back to Apple's direct URLs`);
+				try {
+					const uploadResult = await this.uploadScreenshots(feedback);
+					screenshotUrls = uploadResult.urls;
+					console.log(`✅ Uploaded ${uploadResult.uploaded} screenshot(s), ${uploadResult.failed} failed`);
+
+					// If some uploads failed, add the Apple URLs for failed ones
+					if (uploadResult.failed > 0) {
+						console.log(`⚠️ ${uploadResult.failed} upload(s) failed, adding Apple URLs as fallback for missing screenshots`);
+						const uploadedFilenames = new Set(screenshotUrls.map(u => u.filename));
+						for (const img of feedback.screenshotData.images) {
+							const filename = img.fileName || 'screenshot.png';
+							if (!uploadedFilenames.has(filename) && img.url) {
+								screenshotUrls.push({
+									filename: filename,
+									url: img.url,
+								});
+								console.log(`📎 Added Apple URL fallback for: ${filename}`);
+							}
+						}
+					}
+				} catch (uploadError) {
+					// Upload completely failed - use ALL Apple URLs as fallback
+					console.error(`❌ Screenshot upload failed entirely: ${uploadError}`);
+					console.log(`📎 Falling back to Apple's direct URLs for all screenshots`);
 					for (const img of feedback.screenshotData.images) {
 						if (img.url) {
 							screenshotUrls.push({
@@ -105,10 +131,17 @@ export class LinearClient {
 							});
 						}
 					}
-					console.log(`📎 Using ${screenshotUrls.length} Apple direct URL(s) as fallback`);
+				}
+
+				// CRITICAL: If we still have no screenshot URLs but we know there are images, log an error
+				if (screenshotUrls.length === 0) {
+					console.error(`❌ CRITICAL: No screenshot URLs available despite ${feedback.screenshotData.images.length} image(s) in feedback!`);
+					console.error(`❌ Image details: ${JSON.stringify(feedback.screenshotData.images.map(i => ({ fileName: i.fileName, hasUrl: !!i.url, hasCachedData: !!i.cachedData })))}`);
+				} else {
+					console.log(`✅ Final screenshot count: ${screenshotUrls.length} screenshot(s) ready for embedding`);
 				}
 			} else {
-				console.warn(`⚠️ No screenshot images available for Linear upload`);
+				console.log(`ℹ️ No screenshot images in feedback data (this may be a crash report)`);
 			}
 
 			console.log(`📝 Preparing Linear issue with ${screenshotUrls.length} screenshot URLs...`);
@@ -277,44 +310,83 @@ export class LinearClient {
 	}
 
 	/**
-	 * Searches for duplicate issues in Linear
+	 * Searches for duplicate issues in Linear with robust multi-strategy approach
+	 * CRITICAL: This must reliably find duplicates to prevent duplicate ticket creation
 	 */
 	public async findDuplicateIssue(
 		feedback: ProcessedFeedbackData,
 	): Promise<LinearIssue | null> {
-		try {
-			// Use Linear's search API to find issues containing the TestFlight ID
-			// Search for just the feedback ID since it's unique
-			const searchQuery = feedback.id;
+		const maxRetries = 3;
+		let lastError: Error | null = null;
 
-			// Use searchIssues for text-based search instead of filter operators
-			const searchResults = await this.sdk.searchIssues(searchQuery, {
-				first: 10,
-			});
+		for (let attempt = 1; attempt <= maxRetries; attempt++) {
+			try {
+				console.log(`🔍 Searching for duplicate Linear issue (attempt ${attempt}/${maxRetries}) for feedback ${feedback.id}`);
 
-			for (const issue of searchResults.nodes) {
-				// Verify the issue belongs to our team
-				const team = await issue.team;
-				if (team?.id !== this.config.teamId) {
-					continue;
+				// Strategy 1: Search using the feedback ID directly
+				const searchQuery = feedback.id;
+				const searchResults = await this.sdk.searchIssues(searchQuery, {
+					first: 20, // Increased from 10 to catch more potential matches
+				});
+
+				for (const issue of searchResults.nodes) {
+					// Verify the issue belongs to our team
+					const team = await issue.team;
+					if (team?.id !== this.config.teamId) {
+						continue;
+					}
+
+					const description = await issue.description;
+					// Check for feedback ID in any format (table, footer, or plain)
+					// Table format: | **TestFlight ID** | `{id}` |
+					// Footer format: ID:* `{id}`
+					// Plain format: TestFlight ID: {id}
+					// Also check for backtick-wrapped ID: `{id}`
+					if (description?.includes(feedback.id)) {
+						console.log(`✅ Found duplicate Linear issue for feedback ${feedback.id}: ${issue.identifier}`);
+						return await this.convertToLinearIssue(issue);
+					}
 				}
 
-				const description = await issue.description;
-				// Check for feedback ID in any format (table, footer, or plain)
-				// Table format: | **TestFlight ID** | `{id}` |
-				// Footer format: ID:* `{id}`
-				// Plain format: TestFlight ID: {id}
-				if (description?.includes(feedback.id)) {
-					console.log(`🔍 Found duplicate Linear issue for feedback ${feedback.id}: ${issue.identifier}`);
-					return await this.convertToLinearIssue(issue);
+				// Strategy 2: Query recent issues directly and check descriptions
+				// This catches cases where search indexing is delayed
+				console.log(`🔍 Search didn't find duplicates, checking recent issues directly...`);
+				const recentIssues = await this.sdk.issues({
+					filter: {
+						team: { id: { eq: this.config.teamId } },
+						createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }, // Last 7 days
+					},
+					first: 50,
+				});
+
+				for (const issue of recentIssues.nodes) {
+					const description = await issue.description;
+					if (description?.includes(feedback.id)) {
+						console.log(`✅ Found duplicate Linear issue (via recent issues scan) for feedback ${feedback.id}: ${issue.identifier}`);
+						return await this.convertToLinearIssue(issue);
+					}
+				}
+
+				// No duplicate found after all strategies
+				console.log(`✅ No duplicate found for feedback ${feedback.id}`);
+				return null;
+			} catch (error) {
+				lastError = error as Error;
+				const errorMessage = lastError.message || String(error);
+				console.error(`❌ Error searching for duplicate issues (attempt ${attempt}/${maxRetries}): ${errorMessage}`);
+
+				if (attempt < maxRetries) {
+					const delay = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s
+					console.log(`🔄 Retrying in ${delay / 1000}s...`);
+					await new Promise(resolve => setTimeout(resolve, delay));
 				}
 			}
-
-			return null;
-		} catch (error) {
-			console.warn(`Error searching for duplicate issues: ${error}`);
-			return null;
 		}
+
+		// CRITICAL: If we can't reliably check for duplicates, we should NOT silently proceed
+		// Instead, throw an error so the caller can decide how to handle it
+		console.error(`❌ CRITICAL: Failed to check for duplicates after ${maxRetries} attempts. Last error: ${lastError?.message}`);
+		throw new Error(`Failed to check for duplicate Linear issues: ${lastError?.message}. Cannot safely proceed without duplicate check.`);
 	}
 
 	/**
@@ -426,55 +498,97 @@ export class LinearClient {
 	/**
 	 * Resolves label names to Linear label IDs
 	 * Creates labels if they don't exist
+	 * CRITICAL: Labels MUST be included on Linear issues - this uses retry logic
 	 */
 	private async resolveLabelNamesToIds(labelNames: string[]): Promise<string[]> {
 		if (labelNames.length === 0) {
 			return [];
 		}
 
-		try {
-			// Fetch all available labels for the team
-			const existingLabels = await this.sdk.issueLabels({
-				filter: {
-					team: { id: { eq: this.config.teamId } },
-				},
-			});
+		const maxRetries = 3;
+		let lastError: Error | null = null;
 
-			const labelMap = new Map<string, string>();
-			for (const label of existingLabels.nodes) {
-				labelMap.set(label.name.toLowerCase(), label.id);
-			}
+		for (let attempt = 1; attempt <= maxRetries; attempt++) {
+			try {
+				console.log(`🏷️ Resolving ${labelNames.length} label(s) to IDs (attempt ${attempt}/${maxRetries})...`);
 
-			const resolvedIds: string[] = [];
-			for (const name of labelNames) {
-				const labelId = labelMap.get(name.toLowerCase());
-				if (labelId) {
-					resolvedIds.push(labelId);
-				} else {
-					// Try to create the label if it doesn't exist
-					try {
-						const createResult = await this.sdk.createIssueLabel({
-							name: name,
-							teamId: this.config.teamId,
-						});
-						if (createResult.success) {
-							const newLabel = await createResult.issueLabel;
-							if (newLabel) {
-								resolvedIds.push(newLabel.id);
-								console.log(`🏷️ Created new label: ${name}`);
+				// Fetch all available labels for the team
+				const existingLabels = await this.sdk.issueLabels({
+					filter: {
+						team: { id: { eq: this.config.teamId } },
+					},
+				});
+
+				const labelMap = new Map<string, string>();
+				for (const label of existingLabels.nodes) {
+					labelMap.set(label.name.toLowerCase(), label.id);
+				}
+
+				const resolvedIds: string[] = [];
+				const failedLabels: string[] = [];
+
+				for (const name of labelNames) {
+					const labelId = labelMap.get(name.toLowerCase());
+					if (labelId) {
+						resolvedIds.push(labelId);
+					} else {
+						// Try to create the label if it doesn't exist
+						try {
+							const createResult = await this.sdk.createIssueLabel({
+								name: name,
+								teamId: this.config.teamId,
+							});
+							if (createResult.success) {
+								const newLabel = await createResult.issueLabel;
+								if (newLabel) {
+									resolvedIds.push(newLabel.id);
+									console.log(`🏷️ Created new label: ${name}`);
+								} else {
+									failedLabels.push(name);
+								}
+							} else {
+								failedLabels.push(name);
 							}
+						} catch (createError) {
+							console.warn(`⚠️ Failed to create label "${name}": ${createError}`);
+							failedLabels.push(name);
 						}
-					} catch (createError) {
-						console.warn(`⚠️ Failed to create label "${name}": ${createError}`);
 					}
 				}
-			}
 
-			return resolvedIds;
-		} catch (error) {
-			console.warn(`⚠️ Error resolving label names to IDs: ${error}`);
-			return [];
+				// Log results
+				console.log(`✅ Resolved ${resolvedIds.length}/${labelNames.length} label(s)`);
+				if (failedLabels.length > 0) {
+					console.warn(`⚠️ Failed to resolve/create ${failedLabels.length} label(s): ${failedLabels.join(', ')}`);
+				}
+
+				// CRITICAL: Even if some labels failed, return what we have
+				// But if we got ZERO labels and we expected some, that's a problem
+				if (resolvedIds.length === 0 && labelNames.length > 0) {
+					console.error(`❌ CRITICAL: Failed to resolve ANY labels! Expected ${labelNames.length}: ${labelNames.join(', ')}`);
+				}
+
+				return resolvedIds;
+			} catch (error) {
+				lastError = error as Error;
+				const errorMessage = lastError.message || String(error);
+				console.error(`❌ Error fetching labels (attempt ${attempt}/${maxRetries}): ${errorMessage}`);
+
+				if (attempt < maxRetries) {
+					const delay = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s
+					console.log(`🔄 Retrying label resolution in ${delay / 1000}s...`);
+					await new Promise(resolve => setTimeout(resolve, delay));
+				}
+			}
 		}
+
+		// CRITICAL: All retries failed - log prominently but don't throw
+		// We should still create the issue, just without labels
+		console.error(`❌ CRITICAL: Failed to resolve labels after ${maxRetries} attempts. Last error: ${lastError?.message}`);
+		console.error(`❌ Issue will be created WITHOUT labels: ${labelNames.join(', ')}`);
+
+		// Return empty array but the error has been prominently logged
+		return [];
 	}
 
 	/**
@@ -812,21 +926,24 @@ export class LinearClient {
 		}
 
 		// Generate description - use enhanced description if provided, otherwise generate standard description
+		// Note: generateStandardDescription already includes screenshots, so we only add them for custom descriptions
 		let description = options?.customDescription ||
 			this.generateStandardDescription(feedback, typeIcon, typeLabel, screenshotUrls);
 
-		// Always append screenshots to description if we have URLs (even with custom descriptions)
-		// Custom descriptions from LLM don't include screenshots, so we need to add them
-		console.log(`🔍 DEBUG: customDescription=${!!options?.customDescription}, screenshotUrls.length=${screenshotUrls.length}`);
-		if (screenshotUrls.length > 0) {
-			console.log(`📸 Appending ${screenshotUrls.length} screenshots to description`);
+		// ONLY append screenshots to CUSTOM descriptions (LLM-generated)
+		// Standard descriptions already include screenshots via generateStandardDescription
+		console.log(`📸 Description mode: ${options?.customDescription ? 'custom (LLM)' : 'standard'}, screenshotUrls: ${screenshotUrls.length}`);
+		if (options?.customDescription && screenshotUrls.length > 0) {
+			console.log(`📸 Appending ${screenshotUrls.length} screenshot(s) to custom/LLM description`);
 			description += "\n\n### 📸 Screenshots\n\n";
 			for (const screenshot of screenshotUrls) {
 				description += `**${screenshot.filename}:**\n`;
 				description += `![${screenshot.filename}](${screenshot.url})\n\n`;
 			}
+		} else if (!options?.customDescription) {
+			console.log(`📸 Standard description used - screenshots already included by generateStandardDescription`);
 		} else {
-			console.log(`⚠️ No screenshot URLs to append`);
+			console.log(`⚠️ Custom description but no screenshot URLs to append`);
 		}
 
 		// Determine labels
@@ -959,18 +1076,20 @@ export class LinearClient {
 				description += `**Tester Notes:**\n> ${feedback.screenshotData.testerNotes.replace(/\n/g, "\n> ")}\n\n`;
 			}
 
-			if (feedback.screenshotData.images.length > 0) {
+			// CRITICAL: Always show screenshots section if we have URLs OR images in feedback
+			// We check screenshotUrls first because that's what we'll actually embed
+			if (screenshotUrls.length > 0 || feedback.screenshotData.images.length > 0) {
 				description += "### 📸 Screenshots\n\n";
 
-				// Include uploaded screenshots as embedded images
+				// Include uploaded/fallback screenshots as embedded images
 				if (screenshotUrls.length > 0) {
 					for (const screenshot of screenshotUrls) {
 						description += `**${screenshot.filename}:**\n`;
 						description += `![${screenshot.filename}](${screenshot.url})\n\n`;
 					}
 				} else {
-					// Fallback if no uploads succeeded - mention the count
-					description += `*${feedback.screenshotData.images.length} screenshot(s) were submitted but could not be uploaded.*\n\n`;
+					// Fallback if no URLs available - mention the count
+					description += `*${feedback.screenshotData.images.length} screenshot(s) were submitted but could not be uploaded or linked.*\n\n`;
 				}
 			}
 
