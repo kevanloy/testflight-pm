@@ -46081,15 +46081,27 @@ class LinearClient {
           first: 250
         });
         const labelMap = new Map;
+        const parentLabels = new Set;
         for (const label of existingLabels.nodes) {
-          labelMap.set(label.name.toLowerCase(), label.id);
+          const children = await label.children;
+          const isParentLabel = children && children.nodes && children.nodes.length > 0;
+          if (isParentLabel) {
+            parentLabels.add(label.name.toLowerCase());
+            console.log(`\uD83C\uDFF7️ Skipping parent/group label: ${label.name}`);
+          } else {
+            labelMap.set(label.name.toLowerCase(), label.id);
+          }
         }
-        console.log(`\uD83C\uDFF7️ Found ${labelMap.size} existing labels in workspace`);
+        console.log(`\uD83C\uDFF7️ Found ${labelMap.size} assignable labels (${parentLabels.size} parent labels excluded)`);
         const resolvedIds = [];
         const failedLabels = [];
         const alreadyResolved = new Set;
         for (const name of labelNames) {
           const normalizedName = name.toLowerCase();
+          if (parentLabels.has(normalizedName)) {
+            console.log(`\uD83C\uDFF7️ Skipping '${name}' - it's a parent/group label`);
+            continue;
+          }
           const labelId = labelMap.get(normalizedName);
           if (labelId) {
             if (!alreadyResolved.has(labelId)) {
