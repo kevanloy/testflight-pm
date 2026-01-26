@@ -25870,7 +25870,7 @@ var init_defaults = __esm(() => {
     GTHB_TOKEN: /^gh[ps]_[A-Za-z0-9_]{36,255}$/
   };
   DEFAULT_LLM_MODELS = {
-    openai: "gpt-5-mini",
+    openai: "o4-mini",
     anthropic: "claude-sonnet-4-5",
     google: "gemini-3-flash-preview"
   };
