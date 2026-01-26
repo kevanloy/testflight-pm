@@ -110,9 +110,9 @@ export const VALIDATION_PATTERNS = {
  * All other configuration files should reference these constants
  */
 export const DEFAULT_LLM_MODELS = {
-    openai: "gpt-4o",
-    anthropic: "claude-3-5-sonnet-20241022",
-    google: "gemini-1.5-flash",
+    openai: "gpt-5-mini",
+    anthropic: "claude-sonnet-4-5",
+    google: "gemini-3-flash-preview",
 } as const;
 
 /**
