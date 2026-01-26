@@ -45,10 +45,22 @@ export const DEFAULT_CACHE_CONFIG = {
  * Default label configuration following consistent patterns
  */
 export const DEFAULT_LABEL_CONFIG: Required<BaseLabelConfig> = {
-    defaultLabels: ["testflight", "testflight-pm"],
-    crashLabels: ["bug", "crash"],
+    defaultLabels: ["testflight-pm"],
+    crashLabels: ["bug"],
     feedbackLabels: ["enhancement", "user-feedback"],
     additionalLabels: [],
+} as const;
+
+/**
+ * MoSCoW Priority Label Mapping
+ * Maps LLM priority to MoSCoW labels for Linear issues
+ */
+export const MOSCOW_LABEL_MAP: Record<string, string> = {
+    urgent: "Must",    // Critical issues we must fix
+    high: "Must",      // High priority also maps to Must
+    medium: "Should",  // Should do - important but not critical
+    normal: "Should",  // Normal priority maps to Should
+    low: "Could",      // Nice to have, minor improvements
 } as const;
 
 /**

@@ -1020,8 +1020,8 @@ ${request.codebaseContext.length} relevant file(s) identified for analysis.`
 			enhancedDescription: description,
 			priority: isCrash ? "high" : "medium",
 			labels: isCrash
-				? ["crash", "bug", "testflight"]
-				: ["feedback", "testflight"],
+				? ["crash", "bug", "testflight-pm"]
+				: ["user-feedback", "enhancement", "testflight-pm"],
 			analysis: {
 				rootCause:
 					"Requires LLM analysis for detailed root cause identification",

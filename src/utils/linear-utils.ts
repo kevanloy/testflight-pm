@@ -6,7 +6,17 @@
 import type { LinearIssue, LinearPriority } from "../../types/linear.js";
 import type { ProcessedFeedbackData } from "../../types/testflight.js";
 import { getLinearClient, validateLinearConfig } from "../api/linear-client.js";
-import { DEFAULT_LABEL_CONFIG } from "../config/index.js";
+import { DEFAULT_LABEL_CONFIG, MOSCOW_LABEL_MAP } from "../config/index.js";
+
+/**
+ * Maps Linear priority number to MoSCoW label
+ */
+const PRIORITY_TO_MOSCOW: Record<LinearPriority, string> = {
+	1: "Must",    // Urgent
+	2: "Must",    // High
+	3: "Should",  // Normal/Medium
+	4: "Could",   // Low
+};
 
 export interface LinearIssueCreationOptions {
 	priority?: LinearPriority;
@@ -245,7 +255,7 @@ export function determineFeedbackPriority(
 export function generateFeedbackLabels(
 	feedback: ProcessedFeedbackData,
 ): string[] {
-	const labels: string[] = ["testflight"];
+	const labels: string[] = [...DEFAULT_LABEL_CONFIG.defaultLabels];
 
 	// Type-based labels
 	if (feedback.type === "crash") {
@@ -256,7 +266,7 @@ export function generateFeedbackLabels(
 			labels.push("critical");
 		}
 	} else if (feedback.type === "screenshot") {
-		labels.push("user-feedback");
+		labels.push(...DEFAULT_LABEL_CONFIG.feedbackLabels);
 
 		// Content-based labels
 		if (feedback.screenshotData?.text) {
@@ -271,7 +281,7 @@ export function generateFeedbackLabels(
 			}
 
 			if (text.includes("feature") || text.includes("improvement")) {
-				labels.push("enhancement");
+				labels.push("feature");
 			}
 
 			if (
@@ -284,17 +294,11 @@ export function generateFeedbackLabels(
 		}
 	}
 
-	// Platform/device-based labels
-	if (feedback.deviceInfo.family.toLowerCase().includes("iphone")) {
-		labels.push("ios", "iphone");
-	} else if (feedback.deviceInfo.family.toLowerCase().includes("ipad")) {
-		labels.push("ios", "ipad");
-	}
-
-	// Version-based labels
-	const majorVersion = feedback.appVersion.split(".")[0];
-	if (majorVersion) {
-		labels.push(`v${majorVersion}`);
+	// Add MoSCoW label based on determined priority
+	const priority = determineFeedbackPriority(feedback);
+	const moscowLabel = PRIORITY_TO_MOSCOW[priority];
+	if (moscowLabel) {
+		labels.push(moscowLabel);
 	}
 
 	return labels;

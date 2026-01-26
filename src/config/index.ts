@@ -46,6 +46,7 @@ export {
     SUCCESS_MESSAGES,
     UI_ELEMENTS,
     VALIDATION_PATTERNS,
+    MOSCOW_LABEL_MAP,
     // Legacy exports
     TESTFLIGHT_CONFIG,
 } from "./defaults.js";

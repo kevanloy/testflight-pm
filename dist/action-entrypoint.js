@@ -25831,7 +25831,7 @@ var init_environment_loader = __esm(() => {
 });
 
 // src/config/defaults.ts
-var API_ENDPOINTS, DEFAULT_HTTP_CONFIG, DEFAULT_LABEL_CONFIG, PRIORITY_LEVELS, DEFAULT_TESTFLIGHT_CONFIG, TESTFLIGHT_CONFIG, VALIDATION_PATTERNS, DEFAULT_LLM_MODELS, DEFAULT_LLM_PROVIDERS, DEFAULT_LLM_COST_CONTROLS, DEFAULT_PROCESSING_CONFIG, ERROR_MESSAGES, SUCCESS_MESSAGES, UI_ELEMENTS, PLATFORM_DEFAULTS;
+var API_ENDPOINTS, DEFAULT_HTTP_CONFIG, DEFAULT_LABEL_CONFIG, MOSCOW_LABEL_MAP, PRIORITY_LEVELS, DEFAULT_TESTFLIGHT_CONFIG, TESTFLIGHT_CONFIG, VALIDATION_PATTERNS, DEFAULT_LLM_MODELS, DEFAULT_LLM_PROVIDERS, DEFAULT_LLM_COST_CONTROLS, DEFAULT_PROCESSING_CONFIG, ERROR_MESSAGES, SUCCESS_MESSAGES, UI_ELEMENTS, PLATFORM_DEFAULTS;
 var init_defaults = __esm(() => {
   API_ENDPOINTS = {
     GITHUB: "https://api.github.com",
@@ -25845,10 +25845,17 @@ var init_defaults = __esm(() => {
     rateLimitBuffer: 100
   };
   DEFAULT_LABEL_CONFIG = {
-    defaultLabels: ["testflight", "testflight-pm"],
-    crashLabels: ["bug", "crash"],
+    defaultLabels: ["testflight-pm"],
+    crashLabels: ["bug"],
     feedbackLabels: ["enhancement", "user-feedback"],
     additionalLabels: []
+  };
+  MOSCOW_LABEL_MAP = {
+    urgent: "Must",
+    high: "Must",
+    medium: "Should",
+    normal: "Should",
+    low: "Could"
   };
   PRIORITY_LEVELS = {
     URGENT: 4,
@@ -26452,6 +26459,7 @@ __export(exports_config, {
   SUCCESS_MESSAGES: () => SUCCESS_MESSAGES,
   PRIORITY_LEVELS: () => PRIORITY_LEVELS,
   PATHS: () => PATHS,
+  MOSCOW_LABEL_MAP: () => MOSCOW_LABEL_MAP,
   HTTP_CONFIG: () => HTTP_CONFIG,
   ERROR_MESSAGES: () => ERROR_MESSAGES,
   EMOJIS: () => EMOJIS,
@@ -27384,7 +27392,7 @@ ${request.codebaseContext.length} relevant file(s) identified for analysis.` : "
       enhancedTitle: title,
       enhancedDescription: description,
       priority: isCrash ? "high" : "medium",
-      labels: isCrash ? ["crash", "bug", "testflight"] : ["feedback", "testflight"],
+      labels: isCrash ? ["crash", "bug", "testflight-pm"] : ["user-feedback", "enhancement", "testflight-pm"],
       analysis: {
         rootCause: "Requires LLM analysis for detailed root cause identification",
         affectedComponents: [],
@@ -46094,7 +46102,7 @@ class LinearClient {
         });
         const labelMap = new Map;
         const parentLabels = new Set;
-        const knownGroupLabels = new Set(["feedback", "bug", "feature", "improvement", "platform"]);
+        const knownGroupLabels = new Set(["feedback", "improvement", "platform", "MoSCoW"]);
         for (const label of existingLabels.nodes) {
           const labelNameLower = label.name.toLowerCase();
           if (knownGroupLabels.has(labelNameLower)) {
@@ -47975,11 +47983,16 @@ class LLMEnhancedIssueCreator {
         normal: 3,
         low: 4
       };
+      const moscowLabel = llmAnalysis ? MOSCOW_LABEL_MAP[llmAnalysis.priority] : undefined;
+      const labelsWithMoscow = [
+        ...llmAnalysis?.labels || [],
+        ...moscowLabel ? [moscowLabel] : []
+      ];
       const createOptions = {
         ...options.linear,
         customTitle: llmAnalysis?.enhancedTitle,
         customDescription: llmAnalysis ? this.formatEnhancedLinearDescription(llmAnalysis, context) : undefined,
-        additionalLabels: llmAnalysis?.labels || [],
+        additionalLabels: labelsWithMoscow,
         priority: llmAnalysis ? priorityMap[llmAnalysis.priority] : undefined,
         enableDuplicateDetection: !options.skipDuplicateDetection
       };
@@ -48298,6 +48311,7 @@ var init_llm_enhanced_creator = __esm(() => {
   init_llm_config();
   init_idempotency_service();
   init_state_manager();
+  init_defaults();
 });
 
 // action-entrypoint.ts

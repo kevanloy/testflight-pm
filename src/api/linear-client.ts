@@ -543,7 +543,7 @@ export class LinearClient {
 				const parentLabels = new Set<string>(); // Track parent/group labels that can't be assigned
 
 				// Known Linear group labels that cannot be assigned directly
-				const knownGroupLabels = new Set(["feedback", "bug", "feature", "improvement", "platform"]);
+				const knownGroupLabels = new Set(["feedback", "improvement", "platform", "MoSCoW"]);
 
 				for (const label of existingLabels.nodes) {
 					const labelNameLower = label.name.toLowerCase();

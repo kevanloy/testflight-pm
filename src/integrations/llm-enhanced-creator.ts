@@ -27,6 +27,7 @@ import type {
 	LinearIssueCreationResult,
 } from "../utils/linear-utils.js";
 import { getStateManager } from "../utils/state-manager.js";
+import { MOSCOW_LABEL_MAP } from "../config/defaults.js";
 
 export interface EnhancedIssueCreationOptions {
 	// Platform options
@@ -486,13 +487,20 @@ export class LLMEnhancedIssueCreator {
 				low: 4,
 			};
 
+			// Add MoSCoW label based on LLM priority
+			const moscowLabel = llmAnalysis ? MOSCOW_LABEL_MAP[llmAnalysis.priority] : undefined;
+			const labelsWithMoscow = [
+				...(llmAnalysis?.labels || []),
+				...(moscowLabel ? [moscowLabel] : []),
+			];
+
 			const createOptions: LinearIssueCreationOptions = {
 				...options.linear,
 				customTitle: llmAnalysis?.enhancedTitle,
 				customDescription: llmAnalysis
 					? this.formatEnhancedLinearDescription(llmAnalysis, context)
 					: undefined,
-				additionalLabels: llmAnalysis?.labels || [],
+				additionalLabels: labelsWithMoscow,
 				priority: llmAnalysis ? priorityMap[llmAnalysis.priority] : undefined,
 				enableDuplicateDetection: !options.skipDuplicateDetection,
 			};
