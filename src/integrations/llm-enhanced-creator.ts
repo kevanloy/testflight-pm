@@ -571,26 +571,81 @@ export class LLMEnhancedIssueCreator {
 	 */
 	private formatEnhancedLinearDescription(
 		llmAnalysis: LLMEnhancementResponse,
-		_context: EnhancementContext,
+		context: EnhancementContext,
 	): string {
-		let description = llmAnalysis.enhancedDescription;
+		const { feedback } = context;
+		let description = "";
+
+		// LLM Summary (synthesized version)
+		description += "## 🤖 AI Summary\n\n";
+		description += llmAnalysis.enhancedDescription;
 
 		// Add affected components (Linear format)
 		if (llmAnalysis.analysis.affectedComponents.length > 0) {
-			description += "\n\n## Affected Components\n\n";
+			description += "\n\n## 🎯 Affected Components\n\n";
 			for (const component of llmAnalysis.analysis.affectedComponents) {
 				description += `- ${component}\n`;
 			}
 		}
 
-		// Add analysis details
-		if (llmAnalysis.analysis.rootCause) {
+		// Only add analysis details if they're meaningful (not placeholders)
+		const isPlaceholderRootCause = !llmAnalysis.analysis.rootCause ||
+			llmAnalysis.analysis.rootCause.includes("requires structured LLM") ||
+			llmAnalysis.analysis.rootCause.includes("Requires LLM analysis");
+		const isPlaceholderSuggestedFix = !llmAnalysis.analysis.suggestedFix ||
+			llmAnalysis.analysis.suggestedFix.includes("review the enhanced description") ||
+			llmAnalysis.analysis.suggestedFix.includes("Enable LLM enhancement");
+
+		if (!isPlaceholderRootCause) {
 			description += `\n\n**Root Cause Analysis:**\n${llmAnalysis.analysis.rootCause}`;
 		}
 
-		if (llmAnalysis.analysis.suggestedFix) {
+		if (!isPlaceholderSuggestedFix) {
 			description += `\n\n**Suggested Fix:**\n${llmAnalysis.analysis.suggestedFix}`;
 		}
+
+		// Raw user feedback
+		const rawFeedback = feedback.screenshotData?.text || feedback.crashData?.exceptionMessage;
+		if (rawFeedback) {
+			description += "\n\n---\n\n## 📝 Original User Feedback\n\n";
+			description += `> ${rawFeedback.replace(/\n/g, "\n> ")}`;
+		}
+
+		// Submitter metadata
+		description += "\n\n---\n\n## 👤 Submitter Info\n\n";
+
+		if (feedback.testerInfo?.email) {
+			const name = [feedback.testerInfo.firstName, feedback.testerInfo.lastName]
+				.filter(Boolean).join(" ");
+			description += `- **Tester**: ${name ? `${name} (${feedback.testerInfo.email})` : feedback.testerInfo.email}\n`;
+		}
+
+		description += `- **App Version**: ${feedback.appVersion} (${feedback.buildNumber})\n`;
+		description += `- **Device**: ${feedback.deviceInfo.model} (${feedback.deviceInfo.family})\n`;
+		description += `- **OS**: ${feedback.deviceInfo.osVersion}\n`;
+		description += `- **Locale**: ${feedback.deviceInfo.locale}\n`;
+
+		// System info from crash or screenshot data
+		const systemInfo = feedback.crashData?.systemInfo || feedback.screenshotData?.systemInfo;
+		if (systemInfo) {
+			if ('batteryPercentage' in systemInfo && systemInfo.batteryPercentage !== undefined) {
+				description += `- **Battery**: ${systemInfo.batteryPercentage}%\n`;
+			}
+			if ('batteryLevel' in systemInfo && systemInfo.batteryLevel !== undefined) {
+				description += `- **Battery**: ${systemInfo.batteryLevel}%\n`;
+			}
+			if ('connectionType' in systemInfo && systemInfo.connectionType) {
+				description += `- **Connection**: ${systemInfo.connectionType}\n`;
+			}
+			if ('appUptimeFormatted' in systemInfo && systemInfo.appUptimeFormatted) {
+				description += `- **App Uptime**: ${systemInfo.appUptimeFormatted}\n`;
+			}
+			if ('diskSpaceRemainingGB' in systemInfo && systemInfo.diskSpaceRemainingGB !== null) {
+				description += `- **Disk Space**: ${systemInfo.diskSpaceRemainingGB?.toFixed(1)} GB free\n`;
+			}
+		}
+
+		description += `- **Submitted**: ${feedback.submittedAt.toISOString()}\n`;
 
 		return description;
 	}

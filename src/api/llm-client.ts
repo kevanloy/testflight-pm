@@ -928,21 +928,33 @@ ${request.crashData.trace.join("\n")}
 		const { content } = response;
 		const lines = content.split("\n");
 
-		// Extract title (first meaningful line)
-		const title =
-			lines.find((line) => line.trim() && !line.startsWith("#"))?.trim() ||
-			"TestFlight Issue";
+		// Extract title - look for a good first line that isn't a markdown header
+		let title = lines.find((line) => {
+			const trimmed = line.trim();
+			return trimmed && !trimmed.startsWith("#") && trimmed.length > 5;
+		})?.trim();
+
+		// If no good title found, generate from content
+		if (!title || title === "TestFlight Issue") {
+			const isCrash = content.toLowerCase().includes("crash");
+			title = this.generateTitleFromContent(content, isCrash, isCrash ? "💥" : "📱");
+		}
 
 		// Basic label detection
-		const labels = ["testflight"];
+		const labels = ["testflight-pm"];
 		if (content.toLowerCase().includes("crash")) {
 			labels.push("crash", "bug");
+		} else {
+			labels.push("user-feedback");
 		}
-		if (content.toLowerCase().includes("ui")) {
+		if (content.toLowerCase().includes("ui") || content.toLowerCase().includes("interface")) {
 			labels.push("ui");
 		}
-		if (content.toLowerCase().includes("performance")) {
+		if (content.toLowerCase().includes("performance") || content.toLowerCase().includes("slow")) {
 			labels.push("performance");
+		}
+		if (content.toLowerCase().includes("feature") || content.toLowerCase().includes("request")) {
+			labels.push("feature");
 		}
 
 		// Basic priority detection
@@ -957,6 +969,11 @@ ${request.crashData.trace.join("\n")}
 			content.toLowerCase().includes("crash")
 		) {
 			priority = "high";
+		} else if (
+			content.toLowerCase().includes("minor") ||
+			content.toLowerCase().includes("nice to have")
+		) {
+			priority = "low";
 		}
 
 		return {
@@ -965,10 +982,9 @@ ${request.crashData.trace.join("\n")}
 			priority,
 			labels,
 			analysis: {
-				rootCause: "Analysis requires structured LLM response",
+				rootCause: "", // Empty - will be skipped in description formatting
 				affectedComponents: [],
-				suggestedFix:
-					"Please review the enhanced description for recommendations",
+				suggestedFix: "", // Empty - will be skipped in description formatting
 				confidence: 0.6,
 			},
 			metadata: {
@@ -990,30 +1006,15 @@ ${request.crashData.trace.join("\n")}
 		const isCrash = request.feedbackType === "crash";
 		const typeIcon = isCrash ? "💥" : "📱";
 
-		const title = `${typeIcon} ${request.title}`;
-		const description = `## ${typeIcon} TestFlight ${isCrash ? "Crash Report" : "User Feedback"}
+		// Generate a meaningful title from the feedback content
+		const title = this.generateTitleFromContent(request.description, isCrash, typeIcon);
 
-${request.description}
-
-### Analysis
-- **Type**: ${request.feedbackType}
-- **Enhanced by**: Fallback processing (LLM unavailable)
-
-${request.crashData
-				? `### Crash Information
-- **Device**: ${request.crashData.device}
-- **OS Version**: ${request.crashData.osVersion}
-- **Stack Trace**: ${request.crashData.trace.length} frames captured`
-				: ""
-			}
-
-${request.codebaseContext?.length
-				? `### Codebase Context
-${request.codebaseContext.length} relevant file(s) identified for analysis.`
-				: ""
-			}
-
-*Note: This issue was created with fallback processing. Consider enabling LLM enhancement for deeper analysis.*`;
+		// Create a summary description (metadata will be added by formatEnhancedLinearDescription)
+		const description = request.description && request.description !== "No description available"
+			? request.description
+			: isCrash
+				? `Crash report received from ${request.crashData?.device || "unknown device"} running ${request.crashData?.osVersion || "unknown OS"}.`
+				: "User feedback received via TestFlight.";
 
 		return {
 			enhancedTitle: title,
@@ -1023,11 +1024,9 @@ ${request.codebaseContext.length} relevant file(s) identified for analysis.`
 				? ["crash", "bug", "testflight-pm"]
 				: ["user-feedback", "enhancement", "testflight-pm"],
 			analysis: {
-				rootCause:
-					"Requires LLM analysis for detailed root cause identification",
+				rootCause: "", // Empty - will be skipped in description formatting
 				affectedComponents: [],
-				suggestedFix:
-					"Enable LLM enhancement for automated analysis and suggestions",
+				suggestedFix: "", // Empty - will be skipped in description formatting
 				confidence: 0.3,
 			},
 			metadata: {
@@ -1037,6 +1036,38 @@ ${request.codebaseContext.length} relevant file(s) identified for analysis.`
 				cost: 0,
 			},
 		};
+	}
+
+	/**
+	 * Generate a meaningful title from user feedback content
+	 */
+	private generateTitleFromContent(
+		content: string,
+		isCrash: boolean,
+		typeIcon: string,
+	): string {
+		if (!content || content === "No description available") {
+			return `${typeIcon} ${isCrash ? "Crash Report" : "User Feedback"}`;
+		}
+
+		// Clean and extract first meaningful sentence/phrase
+		const cleaned = content
+			.replace(/\n+/g, " ")
+			.replace(/\s+/g, " ")
+			.trim();
+
+		// Take first sentence or first 80 chars, whichever is shorter
+		const firstSentence = cleaned.split(/[.!?]/)[0]?.trim() || cleaned;
+		const maxLength = 80;
+
+		let title = firstSentence.length > maxLength
+			? `${firstSentence.substring(0, maxLength - 3)}...`
+			: firstSentence;
+
+		// Capitalize first letter
+		title = title.charAt(0).toUpperCase() + title.slice(1);
+
+		return `${typeIcon} ${title}`;
 	}
 
 	/**

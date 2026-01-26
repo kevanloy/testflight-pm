@@ -27331,22 +27331,36 @@ ${changesText}`
     const { content } = response;
     const lines = content.split(`
 `);
-    const title = lines.find((line) => line.trim() && !line.startsWith("#"))?.trim() || "TestFlight Issue";
-    const labels = ["testflight"];
+    let title = lines.find((line) => {
+      const trimmed = line.trim();
+      return trimmed && !trimmed.startsWith("#") && trimmed.length > 5;
+    })?.trim();
+    if (!title || title === "TestFlight Issue") {
+      const isCrash = content.toLowerCase().includes("crash");
+      title = this.generateTitleFromContent(content, isCrash, isCrash ? "\uD83D\uDCA5" : "\uD83D\uDCF1");
+    }
+    const labels = ["testflight-pm"];
     if (content.toLowerCase().includes("crash")) {
       labels.push("crash", "bug");
+    } else {
+      labels.push("user-feedback");
     }
-    if (content.toLowerCase().includes("ui")) {
+    if (content.toLowerCase().includes("ui") || content.toLowerCase().includes("interface")) {
       labels.push("ui");
     }
-    if (content.toLowerCase().includes("performance")) {
+    if (content.toLowerCase().includes("performance") || content.toLowerCase().includes("slow")) {
       labels.push("performance");
+    }
+    if (content.toLowerCase().includes("feature") || content.toLowerCase().includes("request")) {
+      labels.push("feature");
     }
     let priority = "medium";
     if (content.toLowerCase().includes("critical") || content.toLowerCase().includes("urgent")) {
       priority = "urgent";
     } else if (content.toLowerCase().includes("high priority") || content.toLowerCase().includes("crash")) {
       priority = "high";
+    } else if (content.toLowerCase().includes("minor") || content.toLowerCase().includes("nice to have")) {
+      priority = "low";
     }
     return {
       enhancedTitle: title.substring(0, 100),
@@ -27354,9 +27368,9 @@ ${changesText}`
       priority,
       labels,
       analysis: {
-        rootCause: "Analysis requires structured LLM response",
+        rootCause: "",
         affectedComponents: [],
-        suggestedFix: "Please review the enhanced description for recommendations",
+        suggestedFix: "",
         confidence: 0.6
       },
       metadata: {
@@ -27370,33 +27384,17 @@ ${changesText}`
   createFallbackEnhancement(request, startTime) {
     const isCrash = request.feedbackType === "crash";
     const typeIcon = isCrash ? "\uD83D\uDCA5" : "\uD83D\uDCF1";
-    const title = `${typeIcon} ${request.title}`;
-    const description = `## ${typeIcon} TestFlight ${isCrash ? "Crash Report" : "User Feedback"}
-
-${request.description}
-
-### Analysis
-- **Type**: ${request.feedbackType}
-- **Enhanced by**: Fallback processing (LLM unavailable)
-
-${request.crashData ? `### Crash Information
-- **Device**: ${request.crashData.device}
-- **OS Version**: ${request.crashData.osVersion}
-- **Stack Trace**: ${request.crashData.trace.length} frames captured` : ""}
-
-${request.codebaseContext?.length ? `### Codebase Context
-${request.codebaseContext.length} relevant file(s) identified for analysis.` : ""}
-
-*Note: This issue was created with fallback processing. Consider enabling LLM enhancement for deeper analysis.*`;
+    const title = this.generateTitleFromContent(request.description, isCrash, typeIcon);
+    const description = request.description && request.description !== "No description available" ? request.description : isCrash ? `Crash report received from ${request.crashData?.device || "unknown device"} running ${request.crashData?.osVersion || "unknown OS"}.` : "User feedback received via TestFlight.";
     return {
       enhancedTitle: title,
       enhancedDescription: description,
       priority: isCrash ? "high" : "medium",
       labels: isCrash ? ["crash", "bug", "testflight-pm"] : ["user-feedback", "enhancement", "testflight-pm"],
       analysis: {
-        rootCause: "Requires LLM analysis for detailed root cause identification",
+        rootCause: "",
         affectedComponents: [],
-        suggestedFix: "Enable LLM enhancement for automated analysis and suggestions",
+        suggestedFix: "",
         confidence: 0.3
       },
       metadata: {
@@ -27406,6 +27404,17 @@ ${request.codebaseContext.length} relevant file(s) identified for analysis.` : "
         cost: 0
       }
     };
+  }
+  generateTitleFromContent(content, isCrash, typeIcon) {
+    if (!content || content === "No description available") {
+      return `${typeIcon} ${isCrash ? "Crash Report" : "User Feedback"}`;
+    }
+    const cleaned = content.replace(/\n+/g, " ").replace(/\s+/g, " ").trim();
+    const firstSentence = cleaned.split(/[.!?]/)[0]?.trim() || cleaned;
+    const maxLength = 80;
+    let title = firstSentence.length > maxLength ? `${firstSentence.substring(0, maxLength - 3)}...` : firstSentence;
+    title = title.charAt(0).toUpperCase() + title.slice(1);
+    return `${typeIcon} ${title}`;
   }
   initializeUsageStats() {
     return {
@@ -48047,12 +48056,17 @@ ${llmAnalysis.analysis.suggestedFix}`;
 *Enhanced with LLM analysis (${llmAnalysis.metadata.provider}/${llmAnalysis.metadata.model}) - Confidence: ${(llmAnalysis.analysis.confidence * 100).toFixed(0)}%*`;
     return body;
   }
-  formatEnhancedLinearDescription(llmAnalysis, _context) {
-    let description = llmAnalysis.enhancedDescription;
+  formatEnhancedLinearDescription(llmAnalysis, context) {
+    const { feedback } = context;
+    let description = "";
+    description += `## \uD83E\uDD16 AI Summary
+
+`;
+    description += llmAnalysis.enhancedDescription;
     if (llmAnalysis.analysis.affectedComponents.length > 0) {
       description += `
 
-## Affected Components
+## \uD83C\uDFAF Affected Components
 
 `;
       for (const component of llmAnalysis.analysis.affectedComponents) {
@@ -48060,18 +48074,77 @@ ${llmAnalysis.analysis.suggestedFix}`;
 `;
       }
     }
-    if (llmAnalysis.analysis.rootCause) {
+    const isPlaceholderRootCause = !llmAnalysis.analysis.rootCause || llmAnalysis.analysis.rootCause.includes("requires structured LLM") || llmAnalysis.analysis.rootCause.includes("Requires LLM analysis");
+    const isPlaceholderSuggestedFix = !llmAnalysis.analysis.suggestedFix || llmAnalysis.analysis.suggestedFix.includes("review the enhanced description") || llmAnalysis.analysis.suggestedFix.includes("Enable LLM enhancement");
+    if (!isPlaceholderRootCause) {
       description += `
 
 **Root Cause Analysis:**
 ${llmAnalysis.analysis.rootCause}`;
     }
-    if (llmAnalysis.analysis.suggestedFix) {
+    if (!isPlaceholderSuggestedFix) {
       description += `
 
 **Suggested Fix:**
 ${llmAnalysis.analysis.suggestedFix}`;
     }
+    const rawFeedback = feedback.screenshotData?.text || feedback.crashData?.exceptionMessage;
+    if (rawFeedback) {
+      description += `
+
+---
+
+## \uD83D\uDCDD Original User Feedback
+
+`;
+      description += `> ${rawFeedback.replace(/\n/g, `
+> `)}`;
+    }
+    description += `
+
+---
+
+## \uD83D\uDC64 Submitter Info
+
+`;
+    if (feedback.testerInfo?.email) {
+      const name = [feedback.testerInfo.firstName, feedback.testerInfo.lastName].filter(Boolean).join(" ");
+      description += `- **Tester**: ${name ? `${name} (${feedback.testerInfo.email})` : feedback.testerInfo.email}
+`;
+    }
+    description += `- **App Version**: ${feedback.appVersion} (${feedback.buildNumber})
+`;
+    description += `- **Device**: ${feedback.deviceInfo.model} (${feedback.deviceInfo.family})
+`;
+    description += `- **OS**: ${feedback.deviceInfo.osVersion}
+`;
+    description += `- **Locale**: ${feedback.deviceInfo.locale}
+`;
+    const systemInfo = feedback.crashData?.systemInfo || feedback.screenshotData?.systemInfo;
+    if (systemInfo) {
+      if ("batteryPercentage" in systemInfo && systemInfo.batteryPercentage !== undefined) {
+        description += `- **Battery**: ${systemInfo.batteryPercentage}%
+`;
+      }
+      if ("batteryLevel" in systemInfo && systemInfo.batteryLevel !== undefined) {
+        description += `- **Battery**: ${systemInfo.batteryLevel}%
+`;
+      }
+      if ("connectionType" in systemInfo && systemInfo.connectionType) {
+        description += `- **Connection**: ${systemInfo.connectionType}
+`;
+      }
+      if ("appUptimeFormatted" in systemInfo && systemInfo.appUptimeFormatted) {
+        description += `- **App Uptime**: ${systemInfo.appUptimeFormatted}
+`;
+      }
+      if ("diskSpaceRemainingGB" in systemInfo && systemInfo.diskSpaceRemainingGB !== null) {
+        description += `- **Disk Space**: ${systemInfo.diskSpaceRemainingGB?.toFixed(1)} GB free
+`;
+      }
+    }
+    description += `- **Submitted**: ${feedback.submittedAt.toISOString()}
+`;
     return description;
   }
   async fallbackToStandardCreation(feedback, options, result, reason) {
