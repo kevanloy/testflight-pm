@@ -284,39 +284,8 @@ export class LLMClient {
 			} catch (error) {
 				lastError = error as Error;
 
-				// Try to translate error using llm-bridge for consistent error handling
-				try {
-					// Create a universal error object for translation
-					const universalError = {
-						type: "api_error" as const,
-						message: lastError.message,
-						statusCode: 500,
-						httpStatus: 500,
-						provider: currentProvider,
-					};
-					const translatedError = translateError(
-						universalError,
-						currentProvider,
-					);
-					if (
-						translatedError &&
-						typeof translatedError === "object" &&
-						"statusCode" in translatedError
-					) {
-						console.warn(
-							`LLM request failed for provider ${currentProvider}: ${translatedError.statusCode || lastError.message}`,
-						);
-					} else {
-						console.warn(
-							`LLM request failed for provider ${currentProvider}: ${lastError.message}`,
-						);
-					}
-				} catch (_translateErr) {
-					// Fallback to original error if translation fails
-					console.warn(
-						`LLM request failed for provider ${currentProvider}: ${lastError.message}`,
-					);
-				}
+				// Always log the FULL error message - don't truncate to just status code
+				console.error(`❌ LLM request failed for provider ${currentProvider}: ${lastError.message}`);
 
 				// Don't try fallback for authentication errors
 				if (
