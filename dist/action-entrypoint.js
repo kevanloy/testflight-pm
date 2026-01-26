@@ -26995,7 +26995,7 @@ class LLMClient {
     }
   }
   async makeUnifiedAPICall(provider, providerSpecificRequest, providerConfig, options) {
-    const timeout = options.timeout || 30000;
+    const timeout = options.timeout || 120000;
     const controller = new AbortController;
     const timeoutId = setTimeout(() => controller.abort(), timeout);
     try {

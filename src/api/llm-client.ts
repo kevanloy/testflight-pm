@@ -481,7 +481,8 @@ export class LLMClient {
 		providerConfig: { apiKey: string; model?: string },
 		options: LLMRequestOptions,
 	): Promise<unknown> {
-		const timeout = options.timeout || 30000;
+		// Increase timeout to 120 seconds for LLM requests (they can be slow)
+		const timeout = options.timeout || 120000;
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => controller.abort(), timeout);
 
