@@ -26587,17 +26587,26 @@ function loadLLMConfig() {
   if (fallbackProviders) {
     config.fallbackProviders = fallbackProviders.split(",").map((p) => p.trim());
   }
-  const openaiKey = getEnvVar2(LLM_ENV_VARS.OPENAI_API_KEY, "openai-api-key");
+  const openaiKey = getEnvVar2(LLM_ENV_VARS.OPENAI_API_KEY, "openai_api_key");
   if (openaiKey) {
     config.providers.openai.apiKey = openaiKey;
+    console.log(`\uD83D\uDD11 OpenAI API key loaded (${openaiKey.substring(0, 10)}...)`);
+  } else {
+    console.log(`⚠️ OpenAI API key not found`);
   }
-  const anthropicKey = getEnvVar2(LLM_ENV_VARS.ANTHROPIC_API_KEY, "anthropic-api-key");
+  const anthropicKey = getEnvVar2(LLM_ENV_VARS.ANTHROPIC_API_KEY, "anthropic_api_key");
   if (anthropicKey) {
     config.providers.anthropic.apiKey = anthropicKey;
+    console.log(`\uD83D\uDD11 Anthropic API key loaded (${anthropicKey.substring(0, 10)}...)`);
+  } else {
+    console.log(`⚠️ Anthropic API key not found`);
   }
-  const googleKey = getEnvVar2(LLM_ENV_VARS.GOOGLE_API_KEY, "google-api-key");
+  const googleKey = getEnvVar2(LLM_ENV_VARS.GOOGLE_API_KEY, "google_api_key");
   if (googleKey) {
     config.providers.google.apiKey = googleKey;
+    console.log(`\uD83D\uDD11 Google API key loaded (${googleKey.substring(0, 10)}...)`);
+  } else {
+    console.log(`⚠️ Google API key not found`);
   }
   const maxCostPerRun = getEnvVar2(LLM_ENV_VARS.MAX_LLM_COST_PER_RUN, LLM_ACTION_INPUTS.MAX_LLM_COST_PER_RUN);
   if (maxCostPerRun) {
@@ -26873,12 +26882,15 @@ class LLMClient {
           model: request.model || providerConfig.model
         });
         let providerSpecificRequest = fromUniversal(currentProvider, universalRequest);
-        if (currentProvider === "openai" && providerSpecificRequest.max_tokens) {
-          providerSpecificRequest = {
-            ...providerSpecificRequest,
-            max_completion_tokens: providerSpecificRequest.max_tokens
-          };
-          delete providerSpecificRequest.max_tokens;
+        if (currentProvider === "openai") {
+          if (providerSpecificRequest.max_tokens) {
+            providerSpecificRequest = {
+              ...providerSpecificRequest,
+              max_completion_tokens: providerSpecificRequest.max_tokens
+            };
+            delete providerSpecificRequest.max_tokens;
+          }
+          delete providerSpecificRequest.temperature;
         }
         const rawResponse = await this.makeUnifiedAPICall(currentProvider, providerSpecificRequest, providerConfig, options);
         const llmResponse = this.convertUniversalToLLMResponse(rawResponse, currentProvider);

@@ -45,3 +45,4 @@ test-event.json
 
 # Secrets directory
 secrets/
+.claude/settings.local.json

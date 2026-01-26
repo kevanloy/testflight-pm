@@ -264,12 +264,18 @@ export class LLMClient {
 				let providerSpecificRequest = fromUniversal(currentProvider, universalRequest) as Record<string, unknown>;
 
 				// GPT-5 models use max_completion_tokens instead of max_tokens
-				if (currentProvider === "openai" && providerSpecificRequest.max_tokens) {
-					providerSpecificRequest = {
-						...providerSpecificRequest,
-						max_completion_tokens: providerSpecificRequest.max_tokens,
-					};
-					delete providerSpecificRequest.max_tokens;
+				// and only support temperature=1 (default)
+				if (currentProvider === "openai") {
+					if (providerSpecificRequest.max_tokens) {
+						providerSpecificRequest = {
+							...providerSpecificRequest,
+							max_completion_tokens: providerSpecificRequest.max_tokens,
+						};
+						delete providerSpecificRequest.max_tokens;
+					}
+					// GPT-5-mini only supports default temperature (1)
+					// Remove temperature parameter to use default
+					delete providerSpecificRequest.temperature;
 				}
 
 				// Make unified API call using llm-bridge converted format

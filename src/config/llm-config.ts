@@ -244,20 +244,29 @@ export function loadLLMConfig(): LLMEnhancementConfig {
 			.map((p) => p.trim()) as LLMProvider[];
 	}
 
-	// API Keys
-	const openaiKey = getEnvVar(LLM_ENV_VARS.OPENAI_API_KEY, "openai-api-key");
+	// API Keys - Check both underscore (action.yml) and dash versions
+	const openaiKey = getEnvVar(LLM_ENV_VARS.OPENAI_API_KEY, "openai_api_key");
 	if (openaiKey) {
 		config.providers.openai.apiKey = openaiKey;
+		console.log(`🔑 OpenAI API key loaded (${openaiKey.substring(0, 10)}...)`);
+	} else {
+		console.log(`⚠️ OpenAI API key not found`);
 	}
 
-	const anthropicKey = getEnvVar(LLM_ENV_VARS.ANTHROPIC_API_KEY, "anthropic-api-key");
+	const anthropicKey = getEnvVar(LLM_ENV_VARS.ANTHROPIC_API_KEY, "anthropic_api_key");
 	if (anthropicKey) {
 		config.providers.anthropic.apiKey = anthropicKey;
+		console.log(`🔑 Anthropic API key loaded (${anthropicKey.substring(0, 10)}...)`);
+	} else {
+		console.log(`⚠️ Anthropic API key not found`);
 	}
 
-	const googleKey = getEnvVar(LLM_ENV_VARS.GOOGLE_API_KEY, "google-api-key");
+	const googleKey = getEnvVar(LLM_ENV_VARS.GOOGLE_API_KEY, "google_api_key");
 	if (googleKey) {
 		config.providers.google.apiKey = googleKey;
+		console.log(`🔑 Google API key loaded (${googleKey.substring(0, 10)}...)`);
+	} else {
+		console.log(`⚠️ Google API key not found`);
 	}
 
 	// Models are fixed to latest versions - not user-configurable
