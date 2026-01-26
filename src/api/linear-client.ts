@@ -312,6 +312,7 @@ export class LinearClient {
 	/**
 	 * Searches for duplicate issues in Linear with robust multi-strategy approach
 	 * CRITICAL: This must reliably find duplicates to prevent duplicate ticket creation
+	 * Uses filter-based queries (more reliable than text search) with retry logic
 	 */
 	public async findDuplicateIssue(
 		feedback: ProcessedFeedbackData,
@@ -323,34 +324,52 @@ export class LinearClient {
 			try {
 				console.log(`🔍 Searching for duplicate Linear issue (attempt ${attempt}/${maxRetries}) for feedback ${feedback.id}`);
 
-				// Strategy 1: Search using the feedback ID directly
-				const searchQuery = feedback.id;
-				const searchResults = await this.sdk.searchIssues(searchQuery, {
-					first: 20, // Increased from 10 to catch more potential matches
+				// Strategy 1: Use filter-based query (more reliable than text search)
+				// This matches the upstream approach which uses containsIgnoreCase filters
+				const searchQuery = `TestFlight ID: ${feedback.id}`;
+				const issues = await this.sdk.issues({
+					filter: {
+						team: { id: { eq: this.config.teamId } },
+						or: [
+							{ title: { containsIgnoreCase: feedback.id } },
+							{ description: { containsIgnoreCase: searchQuery } },
+							{ description: { containsIgnoreCase: feedback.id } },
+						],
+					},
+					first: 20,
 				});
 
-				for (const issue of searchResults.nodes) {
-					// Verify the issue belongs to our team
-					const team = await issue.team;
-					if (team?.id !== this.config.teamId) {
-						continue;
-					}
-
+				for (const issue of issues.nodes) {
 					const description = await issue.description;
+					// Verify the feedback ID is actually in the description
 					// Check for feedback ID in any format (table, footer, or plain)
-					// Table format: | **TestFlight ID** | `{id}` |
-					// Footer format: ID:* `{id}`
-					// Plain format: TestFlight ID: {id}
-					// Also check for backtick-wrapped ID: `{id}`
 					if (description?.includes(feedback.id)) {
 						console.log(`✅ Found duplicate Linear issue for feedback ${feedback.id}: ${issue.identifier}`);
 						return await this.convertToLinearIssue(issue);
 					}
 				}
 
-				// Strategy 2: Query recent issues directly and check descriptions
-				// This catches cases where search indexing is delayed
-				console.log(`🔍 Search didn't find duplicates, checking recent issues directly...`);
+				// Strategy 2: Fallback to text search (catches edge cases)
+				console.log(`🔍 Filter search didn't find duplicates, trying text search...`);
+				const searchResults = await this.sdk.searchIssues(feedback.id, {
+					first: 20,
+				});
+
+				for (const issue of searchResults.nodes) {
+					const team = await issue.team;
+					if (team?.id !== this.config.teamId) {
+						continue;
+					}
+
+					const description = await issue.description;
+					if (description?.includes(feedback.id)) {
+						console.log(`✅ Found duplicate Linear issue (via text search) for feedback ${feedback.id}: ${issue.identifier}`);
+						return await this.convertToLinearIssue(issue);
+					}
+				}
+
+				// Strategy 3: Query recent issues directly (catches indexing delays)
+				console.log(`🔍 Text search didn't find duplicates, checking recent issues directly...`);
 				const recentIssues = await this.sdk.issues({
 					filter: {
 						team: { id: { eq: this.config.teamId } },

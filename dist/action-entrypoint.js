@@ -46082,8 +46082,27 @@ class LinearClient {
     for (let attempt = 1;attempt <= maxRetries; attempt++) {
       try {
         console.log(`\uD83D\uDD0D Searching for duplicate Linear issue (attempt ${attempt}/${maxRetries}) for feedback ${feedback.id}`);
-        const searchQuery = feedback.id;
-        const searchResults = await this.sdk.searchIssues(searchQuery, {
+        const searchQuery = `TestFlight ID: ${feedback.id}`;
+        const issues = await this.sdk.issues({
+          filter: {
+            team: { id: { eq: this.config.teamId } },
+            or: [
+              { title: { containsIgnoreCase: feedback.id } },
+              { description: { containsIgnoreCase: searchQuery } },
+              { description: { containsIgnoreCase: feedback.id } }
+            ]
+          },
+          first: 20
+        });
+        for (const issue of issues.nodes) {
+          const description = await issue.description;
+          if (description?.includes(feedback.id)) {
+            console.log(`✅ Found duplicate Linear issue for feedback ${feedback.id}: ${issue.identifier}`);
+            return await this.convertToLinearIssue(issue);
+          }
+        }
+        console.log(`\uD83D\uDD0D Filter search didn't find duplicates, trying text search...`);
+        const searchResults = await this.sdk.searchIssues(feedback.id, {
           first: 20
         });
         for (const issue of searchResults.nodes) {
@@ -46093,11 +46112,11 @@ class LinearClient {
           }
           const description = await issue.description;
           if (description?.includes(feedback.id)) {
-            console.log(`✅ Found duplicate Linear issue for feedback ${feedback.id}: ${issue.identifier}`);
+            console.log(`✅ Found duplicate Linear issue (via text search) for feedback ${feedback.id}: ${issue.identifier}`);
             return await this.convertToLinearIssue(issue);
           }
         }
-        console.log(`\uD83D\uDD0D Search didn't find duplicates, checking recent issues directly...`);
+        console.log(`\uD83D\uDD0D Text search didn't find duplicates, checking recent issues directly...`);
         const recentIssues = await this.sdk.issues({
           filter: {
             team: { id: { eq: this.config.teamId } },
