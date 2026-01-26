@@ -27150,6 +27150,12 @@ class LLMClient {
     const timeoutId = setTimeout(() => controller.abort(), timeout);
     try {
       const { endpoint, headers } = this.getProviderEndpointConfig(provider, providerConfig, providerSpecificRequest);
+      const maskedHeaders = { ...headers };
+      if (maskedHeaders.Authorization) {
+        maskedHeaders.Authorization = maskedHeaders.Authorization.substring(0, 15) + "***";
+      }
+      console.log(`\uD83E\uDD16 LLM API request (${provider}): endpoint=${endpoint}, model=${providerSpecificRequest?.model}`);
+      console.log(`\uD83E\uDD16 Request headers: ${JSON.stringify(maskedHeaders)}`);
       const response = await fetch(endpoint, {
         method: "POST",
         headers: {
@@ -27162,9 +27168,12 @@ class LLMClient {
       clearTimeout(timeoutId);
       if (!response.ok) {
         const errorText = await response.text();
+        console.error(`❌ LLM API error response (${provider}): status=${response.status}, body=${errorText.substring(0, 500)}`);
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
-      return await response.json();
+      const jsonResponse = await response.json();
+      console.log(`✅ LLM API success (${provider}): model=${jsonResponse?.model}, usage=${JSON.stringify(jsonResponse?.usage)}`);
+      return jsonResponse;
     } finally {
       clearTimeout(timeoutId);
     }

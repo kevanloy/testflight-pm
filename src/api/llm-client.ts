@@ -509,6 +509,14 @@ export class LLMClient {
 				providerSpecificRequest,
 			);
 
+			// Log request details for debugging (mask API key)
+			const maskedHeaders = { ...headers };
+			if (maskedHeaders.Authorization) {
+				maskedHeaders.Authorization = maskedHeaders.Authorization.substring(0, 15) + '***';
+			}
+			console.log(`🤖 LLM API request (${provider}): endpoint=${endpoint}, model=${(providerSpecificRequest as any)?.model}`);
+			console.log(`🤖 Request headers: ${JSON.stringify(maskedHeaders)}`);
+
 			const response = await fetch(endpoint, {
 				method: "POST",
 				headers: {
@@ -523,10 +531,13 @@ export class LLMClient {
 
 			if (!response.ok) {
 				const errorText = await response.text();
+				console.error(`❌ LLM API error response (${provider}): status=${response.status}, body=${errorText.substring(0, 500)}`);
 				throw new Error(`HTTP ${response.status}: ${errorText}`);
 			}
 
-			return await response.json();
+			const jsonResponse = await response.json();
+			console.log(`✅ LLM API success (${provider}): model=${(jsonResponse as any)?.model}, usage=${JSON.stringify((jsonResponse as any)?.usage)}`);
+			return jsonResponse;
 		} finally {
 			clearTimeout(timeoutId);
 		}
