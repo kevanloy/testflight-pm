@@ -47956,9 +47956,10 @@ class LLMEnhancedIssueCreator {
           message: "DRY RUN: GitHub issue would be created"
         };
       }
+      const customTitle = this.generateMeaningfulTitle(llmAnalysis?.enhancedTitle, feedback);
       const createOptions = {
         ...options.github,
-        customTitle: llmAnalysis?.enhancedTitle,
+        customTitle,
         customBody: llmAnalysis ? this.formatEnhancedGitHubBody(llmAnalysis, context) : undefined,
         additionalLabels: llmAnalysis?.labels || [],
         enableDuplicateDetection: !options.skipDuplicateDetection
@@ -47997,9 +47998,10 @@ class LLMEnhancedIssueCreator {
         ...llmAnalysis?.labels || [],
         ...moscowLabel ? [moscowLabel] : []
       ];
+      const customTitle = this.generateMeaningfulTitle(llmAnalysis?.enhancedTitle, feedback);
       const createOptions = {
         ...options.linear,
-        customTitle: llmAnalysis?.enhancedTitle,
+        customTitle,
         customDescription: llmAnalysis ? this.formatEnhancedLinearDescription(llmAnalysis, context) : undefined,
         additionalLabels: labelsWithMoscow,
         priority: llmAnalysis ? priorityMap[llmAnalysis.priority] : undefined,
@@ -48146,6 +48148,32 @@ ${llmAnalysis.analysis.suggestedFix}`;
     description += `- **Submitted**: ${feedback.submittedAt.toISOString()}
 `;
     return description;
+  }
+  generateMeaningfulTitle(llmTitle, feedback) {
+    const isCrash = feedback.type === "crash";
+    const typeIcon = isCrash ? "\uD83D\uDCA5" : "\uD83D\uDCF1";
+    const genericTitles = [
+      "testflight issue",
+      "user feedback",
+      "crash report",
+      "feedback",
+      "crash",
+      "issue"
+    ];
+    const isGenericTitle = !llmTitle || genericTitles.some((generic) => llmTitle.toLowerCase().replace(/[📱💥]\s*/, "").trim() === generic);
+    if (!isGenericTitle && llmTitle) {
+      return llmTitle;
+    }
+    const userText = feedback.screenshotData?.text || feedback.crashData?.exceptionMessage || "";
+    if (!userText) {
+      return `${typeIcon} ${isCrash ? "Crash Report" : "User Feedback"} - ${feedback.appVersion}`;
+    }
+    const cleaned = userText.replace(/\n+/g, " ").replace(/\s+/g, " ").trim();
+    const firstSentence = cleaned.split(/[.!?]/)[0]?.trim() || cleaned;
+    const maxLength = 80;
+    let title = firstSentence.length > maxLength ? `${firstSentence.substring(0, maxLength - 3)}...` : firstSentence;
+    title = title.charAt(0).toUpperCase() + title.slice(1);
+    return `${typeIcon} ${title}`;
   }
   async fallbackToStandardCreation(feedback, options, result, reason) {
     if (!options.fallbackToStandard) {

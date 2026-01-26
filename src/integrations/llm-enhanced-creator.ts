@@ -432,9 +432,15 @@ export class LLMEnhancedIssueCreator {
 			}
 
 			// Use enhanced data if available
+			// Generate title - use LLM title if meaningful, otherwise extract from user feedback
+			const customTitle = this.generateMeaningfulTitle(
+				llmAnalysis?.enhancedTitle,
+				feedback,
+			);
+
 			const createOptions: GitHubIssueCreationOptions = {
 				...options.github,
-				customTitle: llmAnalysis?.enhancedTitle,
+				customTitle,
 				customBody: llmAnalysis
 					? this.formatEnhancedGitHubBody(llmAnalysis, context)
 					: undefined,
@@ -494,9 +500,15 @@ export class LLMEnhancedIssueCreator {
 				...(moscowLabel ? [moscowLabel] : []),
 			];
 
+			// Generate title - use LLM title if meaningful, otherwise extract from user feedback
+			const customTitle = this.generateMeaningfulTitle(
+				llmAnalysis?.enhancedTitle,
+				feedback,
+			);
+
 			const createOptions: LinearIssueCreationOptions = {
 				...options.linear,
-				customTitle: llmAnalysis?.enhancedTitle,
+				customTitle,
 				customDescription: llmAnalysis
 					? this.formatEnhancedLinearDescription(llmAnalysis, context)
 					: undefined,
@@ -648,6 +660,64 @@ export class LLMEnhancedIssueCreator {
 		description += `- **Submitted**: ${feedback.submittedAt.toISOString()}\n`;
 
 		return description;
+	}
+
+	/**
+	 * Generate a meaningful title, falling back to user feedback if LLM title is generic
+	 */
+	private generateMeaningfulTitle(
+		llmTitle: string | undefined,
+		feedback: ProcessedFeedbackData,
+	): string {
+		const isCrash = feedback.type === "crash";
+		const typeIcon = isCrash ? "💥" : "📱";
+
+		// Check if LLM title is meaningful (not generic)
+		const genericTitles = [
+			"testflight issue",
+			"user feedback",
+			"crash report",
+			"feedback",
+			"crash",
+			"issue",
+		];
+
+		const isGenericTitle = !llmTitle ||
+			genericTitles.some(generic =>
+				llmTitle.toLowerCase().replace(/[📱💥]\s*/, "").trim() === generic
+			);
+
+		if (!isGenericTitle && llmTitle) {
+			return llmTitle;
+		}
+
+		// Extract title from user's feedback text
+		const userText = feedback.screenshotData?.text ||
+			feedback.crashData?.exceptionMessage ||
+			"";
+
+		if (!userText) {
+			return `${typeIcon} ${isCrash ? "Crash Report" : "User Feedback"} - ${feedback.appVersion}`;
+		}
+
+		// Clean and extract first meaningful sentence/phrase
+		const cleaned = userText
+			.replace(/\n+/g, " ")
+			.replace(/\s+/g, " ")
+			.trim();
+
+		// Take first sentence or first 80 chars
+		const firstSentence = cleaned.split(/[.!?]/)[0]?.trim() || cleaned;
+		const maxLength = 80;
+
+		let title = firstSentence.length > maxLength
+			? `${firstSentence.substring(0, maxLength - 3)}...`
+			: firstSentence;
+
+		// Capitalize first letter
+		title = title.charAt(0).toUpperCase() + title.slice(1);
+
+		return `${typeIcon} ${title}`;
 	}
 
 	/**
