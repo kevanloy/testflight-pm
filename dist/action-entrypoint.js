@@ -47134,8 +47134,9 @@ class IdempotencyService {
         }
         result.duplicateDetection = duplicateResult;
       }
-      const { preferredPlatform = "both" } = options;
-      if (preferredPlatform === "github" || preferredPlatform === "both") {
+      const rawPlatform = options.preferredPlatform ?? "linear";
+      const preferredPlatform = rawPlatform === "both" ? "linear" : rawPlatform;
+      if (preferredPlatform === "github") {
         try {
           const githubClient = getGitHubClient();
           result.github = await githubClient.createIssueFromTestFlight(feedback, {
@@ -47146,7 +47147,7 @@ class IdempotencyService {
           result.errors.push(`GitHub: ${error.message}`);
         }
       }
-      if (preferredPlatform === "linear" || preferredPlatform === "both") {
+      if (preferredPlatform === "linear") {
         try {
           const linearClient = getLinearClient();
           const linearIssue = await linearClient.createIssueFromTestFlight(feedback, [], undefined, undefined, undefined);
@@ -47803,13 +47804,14 @@ class LLMEnhancedIssueCreator {
         result.llmAnalysis = llmAnalysis;
         result.enhanced = !!llmAnalysis;
       }
-      if (options.platform === "github" || options.platform === "both") {
+      const effectivePlatform = options.platform === "both" ? "linear" : options.platform;
+      if (effectivePlatform === "github") {
         result.github = await this.createGitHubIssue(feedback, llmAnalysis, context, options);
         if (result.github?.issue) {
           result.platform.push("github");
         }
       }
-      if (options.platform === "linear" || options.platform === "both") {
+      if (effectivePlatform === "linear") {
         result.linear = await this.createLinearIssue(feedback, llmAnalysis, context, options);
         if (result.linear?.issue) {
           result.platform.push("linear");
@@ -48192,8 +48194,9 @@ ${llmAnalysis.analysis.suggestedFix}`;
     result.usedFallback = true;
     result.fallbackReason = reason;
     try {
+      const effectivePlatform = options.platform === "both" ? "linear" : options.platform;
       const standardResult = await this.idempotencyService.createIssueWithDuplicateProtection(feedback, {
-        preferredPlatform: options.platform,
+        preferredPlatform: effectivePlatform,
         skipDuplicateDetection: options.skipDuplicateDetection,
         actionRunId: options.actionRunId
       });
@@ -48320,7 +48323,8 @@ ${llmAnalysis.analysis.suggestedFix}`;
   async findRelatedIssues(feedback, options) {
     const relatedIssues = [];
     try {
-      if (options.platform === "github" || options.platform === "both") {
+      const effectivePlatform = options.platform === "both" ? "linear" : options.platform;
+      if (effectivePlatform === "github") {
         const githubSearch = await this.githubClient.findDuplicateIssue(feedback);
         if (githubSearch.isDuplicate && githubSearch.existingIssue) {
           relatedIssues.push({
@@ -48331,7 +48335,7 @@ ${llmAnalysis.analysis.suggestedFix}`;
           });
         }
       }
-      if (options.platform === "linear" || options.platform === "both") {
+      if (effectivePlatform === "linear") {
         const linearDuplicate = await this.linearClient.findDuplicateIssue(feedback);
         if (linearDuplicate) {
           const numberMatch = linearDuplicate.identifier.match(/\d+/);
@@ -50711,7 +50715,8 @@ async function run() {
     const enableCodebaseAnalysis = core2.getBooleanInput("enable_codebase_analysis");
     const enableDuplicateDetection = core2.getBooleanInput("enable_duplicate_detection");
     const isDryRun = core2.getBooleanInput("dry_run");
-    const platform = (core2.getInput("platform") || "github").toLowerCase();
+    const rawPlatform = (core2.getInput("platform") || "linear").toLowerCase();
+    const platform = rawPlatform === "both" ? "linear" : rawPlatform;
     if (isDebugMode) {
       core2.info("\uD83D\uDC1B Debug mode enabled - verbose logging active");
       core2.debug("Environment variables check:");

@@ -127,10 +127,12 @@ export class IdempotencyService {
 			}
 
 			// Step 3: Create new issues on requested platforms
-			const { preferredPlatform = "both" } = options;
+			// Treat "both" as "linear" since Linear handles GitHub sync automatically
+			const rawPlatform = options.preferredPlatform ?? "linear";
+			const preferredPlatform = rawPlatform === "both" ? "linear" : rawPlatform;
 
 			// Create GitHub issue if requested
-			if (preferredPlatform === "github" || preferredPlatform === "both") {
+			if (preferredPlatform === "github") {
 				try {
 					const githubClient = getGitHubClient();
 					result.github = await githubClient.createIssueFromTestFlight(
@@ -146,7 +148,7 @@ export class IdempotencyService {
 			}
 
 			// Create Linear issue if requested
-			if (preferredPlatform === "linear" || preferredPlatform === "both") {
+			if (preferredPlatform === "linear") {
 				try {
 					const linearClient = getLinearClient();
 					const linearIssue = await linearClient.createIssueFromTestFlight(

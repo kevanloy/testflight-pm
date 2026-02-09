@@ -164,7 +164,11 @@ export class LLMEnhancedIssueCreator {
 			}
 
 			// Create issues on specified platforms
-			if (options.platform === "github" || options.platform === "both") {
+			// Note: "both" is treated as "linear" since Linear handles GitHub sync automatically
+			// This prevents duplicate issues from the Linear-GitHub sync integration
+			const effectivePlatform = options.platform === "both" ? "linear" : options.platform;
+
+			if (effectivePlatform === "github") {
 				result.github = await this.createGitHubIssue(
 					feedback,
 					llmAnalysis,
@@ -176,7 +180,7 @@ export class LLMEnhancedIssueCreator {
 				}
 			}
 
-			if (options.platform === "linear" || options.platform === "both") {
+			if (effectivePlatform === "linear") {
 				result.linear = await this.createLinearIssue(
 					feedback,
 					llmAnalysis,
@@ -758,11 +762,13 @@ export class LLMEnhancedIssueCreator {
 
 		try {
 			// Use idempotency service for standard creation
+			// Treat "both" as "linear" since Linear handles GitHub sync automatically
+			const effectivePlatform = options.platform === "both" ? "linear" : options.platform;
 			const standardResult =
 				await this.idempotencyService.createIssueWithDuplicateProtection(
 					feedback,
 					{
-						preferredPlatform: options.platform, // Preserve "both" to create on all platforms
+						preferredPlatform: effectivePlatform,
 						skipDuplicateDetection: options.skipDuplicateDetection,
 						actionRunId: options.actionRunId,
 					},
@@ -1031,8 +1037,11 @@ export class LLMEnhancedIssueCreator {
 		}> = [];
 
 		try {
+			// Treat "both" as "linear" since Linear handles GitHub sync automatically
+			const effectivePlatform = options.platform === "both" ? "linear" : options.platform;
+
 			// Search GitHub for related issues
-			if (options.platform === "github" || options.platform === "both") {
+			if (effectivePlatform === "github") {
 				const githubSearch =
 					await this.githubClient.findDuplicateIssue(feedback);
 				if (githubSearch.isDuplicate && githubSearch.existingIssue) {
@@ -1049,7 +1058,7 @@ export class LLMEnhancedIssueCreator {
 			}
 
 			// Search Linear for related issues
-			if (options.platform === "linear" || options.platform === "both") {
+			if (effectivePlatform === "linear") {
 				const linearDuplicate =
 					await this.linearClient.findDuplicateIssue(feedback);
 				if (linearDuplicate) {

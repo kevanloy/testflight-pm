@@ -549,13 +549,12 @@ export async function createIssueFromTestFlightFeedback(
 		errors: string[];
 	} = { errors: [] };
 
-	const { preferredPlatform = "both" } = options;
+	// Treat "both" as "linear" since Linear handles GitHub sync automatically
+	const rawPlatform = options.preferredPlatform ?? "linear";
+	const preferredPlatform = rawPlatform === "both" ? "linear" : rawPlatform;
 
 	// Create GitHub issue if configured and requested
-	if (
-		(preferredPlatform === "github" || preferredPlatform === "both") &&
-		validateGitHubConfig()
-	) {
+	if (preferredPlatform === "github" && validateGitHubConfig()) {
 		try {
 			results.github = await createGitHubIssueFromFeedback(
 				feedback,

@@ -156,8 +156,11 @@ async function run(): Promise<void> {
 		);
 		const isDryRun = core.getBooleanInput("dry_run");
 
-		// Get platform configuration  
-		const platform = (core.getInput("platform") || "github").toLowerCase() as "github" | "linear" | "both";
+		// Get platform configuration
+		// Default to "linear" since Linear handles GitHub sync automatically
+		// "both" is treated as "linear" to avoid duplicate issues from sync
+		const rawPlatform = (core.getInput("platform") || "linear").toLowerCase() as "github" | "linear" | "both";
+		const platform = rawPlatform === "both" ? "linear" : rawPlatform;
 
 		// Enhanced debug logging
 		if (isDebugMode) {
